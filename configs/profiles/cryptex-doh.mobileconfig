@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>PayloadContent</key>
+    <array>
+        <dict>
+            <key>DNSSettings</key>
+            <dict>
+                <key>DNSProtocol</key>
+                <string>HTTPS</string>
+                <key>ServerURL</key>
+                <string>https://dns.psidex.com/dns-query</string>
+            </dict>
+            <key>OnDemandRules</key>
+            <array>
+                <dict>
+                    <key>Action</key>
+                    <string>EvaluateConnection</string>
+                    <key>ActionParameters</key>
+                    <array>
+                        <dict>
+                            <key>DomainAction</key>
+                            <string>NeverConnect</string>
+                            <key>Domains</key>
+                            <array>
+                                <string>psidex.com</string>
+                                <string>dns.psidex.com</string>
+                            </array>
+                        </dict>
+                    </array>
+                </dict>
+                <dict>
+                    <key>Action</key>
+                    <string>Connect</string>
+                </dict>
+            </array>
+            <key>PayloadDescription</key>
+            <string>Routes all DNS queries through CRYPTEX AdGuard Home via Cloudflare Tunnel (DoH)</string>
+            <key>PayloadDisplayName</key>
+            <string>CRYPTEX DNS (DoH)</string>
+            <key>PayloadIdentifier</key>
+            <string>com.psidex.com.dns.doh</string>
+            <key>PayloadType</key>
+            <string>com.apple.dnsSettings.managed</string>
+            <key>PayloadUUID</key>
+            <string>7525033a-2616-42e3-a2e6-e5cff10bda71</string>
+            <key>PayloadVersion</key>
+            <integer>1</integer>
+        </dict>
+    </array>
+    <key>PayloadDescription</key>
+    <string>CRYPTEX DNS-over-HTTPS — All DNS queries routed through AdGuard Home via Cloudflare Tunnel. Install on macOS or iOS.</string>
+    <key>PayloadDisplayName</key>
+    <string>CRYPTEX DNS</string>
+    <key>PayloadIdentifier</key>
+    <string>com.psidex.com.dns</string>
+    <key>PayloadOrganization</key>
+    <string>CRYPTEX</string>
+    <key>PayloadRemovalDisallowed</key>
+    <false/>
+    <key>PayloadScope</key>
+    <string>System</string>
+    <key>PayloadType</key>
+    <string>Configuration</string>
+    <key>PayloadUUID</key>
+    <string>3f43d43a-61a3-4600-99db-6d427668ae28</string>
+    <key>PayloadVersion</key>
+    <integer>1</integer>
+</dict>
+</plist>

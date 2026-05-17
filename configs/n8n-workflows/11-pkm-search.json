@@ -1,0 +1,49 @@
+{
+  "id": "cryptex-pkm-search",
+  "name": "CRYPTEX: PKM Search (MCP Tool)",
+  "nodes": [
+    {
+      "parameters": {
+        "authentication": "none",
+        "path": "cryptex"
+      },
+      "id": "mcp-trigger",
+      "name": "MCP Server Trigger",
+      "type": "@n8n/n8n-nodes-langchain.mcpTrigger",
+      "typeVersion": 2,
+      "position": [400, 300],
+      "webhookId": "cryptex-pkm-mcp"
+    },
+    {
+      "parameters": {
+        "name": "search_pkm",
+        "description": "Search the personal knowledge base (PKM) for notes, ideas, and information. Use this to find saved notes, project info, TIL entries, areas, and personal knowledge. Returns file paths and relevant excerpts.",
+        "language": "javaScript",
+        "jsCode": "const fs = require('fs');\nconst path = require('path');\n\nconst PKM_DIR = '/pkm';\nconst queryStr = (query || '').trim().toLowerCase();\nconst LIMIT = 5;\n\nif (!queryStr) return 'No query provided';\n\nconst results = [];\n\nfunction searchDir(dir) {\n  if (results.length >= 25) return;\n  let entries;\n  try { entries = fs.readdirSync(dir, { withFileTypes: true }); }\n  catch (e) { return; }\n  for (const entry of entries) {\n    if (results.length >= 25) break;\n    const fullPath = path.join(dir, entry.name);\n    if (entry.isDirectory() && !entry.name.startsWith('.')) {\n      searchDir(fullPath);\n    } else if (entry.isFile() && entry.name.endsWith('.md')) {\n      try {\n        const content = fs.readFileSync(fullPath, 'utf8');\n        if (content.toLowerCase().includes(queryStr)) {\n          const lines = content.split('\\n');\n          const excerpts = [];\n          for (let i = 0; i < lines.length && excerpts.length < 3; i++) {\n            if (lines[i].toLowerCase().includes(queryStr)) {\n              const start = Math.max(0, i - 1);\n              const end = Math.min(lines.length - 1, i + 3);\n              excerpts.push(lines.slice(start, end + 1).join('\\n').trim());\n            }\n          }\n          results.push({ file: fullPath.replace(PKM_DIR + '/', ''), excerpts });\n        }\n      } catch (e) {}\n    }\n  }\n}\n\nsearchDir(PKM_DIR);\n\n// Rank: filename matches first\nresults.sort((a, b) => {\n  const aF = a.file.toLowerCase().includes(queryStr) ? 0 : 1;\n  const bF = b.file.toLowerCase().includes(queryStr) ? 0 : 1;\n  return aF - bF;\n});\n\nconst top = results.slice(0, LIMIT);\n\nif (top.length === 0) return 'No results found for \"' + query + '\" in PKM';\n\nreturn 'PKM search results for \"' + query + '\" (' + results.length + ' total matches, showing ' + top.length + '):\\n\\n' +\n  top.map(r => '## ' + r.file + '\\n' + r.excerpts.join('\\n---\\n')).join('\\n\\n===\\n\\n');"
+      },
+      "id": "pkm-search-tool",
+      "name": "PKM Search",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [400, 500]
+    }
+  ],
+  "connections": {
+    "PKM Search": {
+      "ai_tool": [
+        [
+          {
+            "node": "MCP Server Trigger",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

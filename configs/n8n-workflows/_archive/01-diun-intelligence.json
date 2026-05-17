@@ -1,0 +1,119 @@
+{
+  "name": "CRYPTEX \u2014 DIUN Update Intelligence",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "diun-update",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "a1000001-0000-0000-0000-000000000001",
+      "name": "DIUN Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "diun-update"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-status",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "update",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "a1000001-0000-0000-0000-000000000002",
+      "name": "Is Update?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst img = d.image || 'unknown';\nconst ctr = (d.metadata && d.metadata.container_name) || img.split(':')[0].split('/').pop();\nconst hub = d.hub_link || 'https://hub.docker.com';\nconst svc = ctr.replace('cryptex-', '');\n\nconst prompt = `You are a server maintenance assistant for a self-hosted Docker homelab. A Docker image update is available.\\n\\nImage: ${img}\\nContainer: ${ctr}\\nHub link: ${hub}\\n\\nProvide a brief update analysis (max 120 words, plain text, no markdown formatting):\\n1. Update type: major / minor / patch\\n2. Key changes (2-3 specific points)\\n3. Security fixes? yes/no (include CVE IDs if known)\\n4. Breaking changes? yes/no (details if yes)\\n5. Verdict: SAFE \\u2705 / CAUTION \\u26a0\\ufe0f / SKIP \\u274c`;\n\nreturn [{ json: { prompt, image: img, container: ctr, service: svc, hub } }];"
+      },
+      "id": "a1000001-0000-0000-0000-000000000003",
+      "name": "Build Gemini Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=' + $env.GEMINI_API_KEY }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ contents: [{ parts: [{ text: $json.prompt }] }], generationConfig: { maxOutputTokens: 300, temperature: 0.2 } }) }}",
+        "options": { "timeout": 20000 }
+      },
+      "id": "a1000001-0000-0000-0000-000000000004",
+      "name": "Gemini Research",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [860, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const gemRes = $input.first().json;\nconst prev = $('Build Gemini Prompt').first().json;\n\nlet analysis = 'Analysis unavailable (Gemini API error)';\ntry {\n  analysis = gemRes.candidates[0].content.parts[0].text.trim();\n} catch(e) {}\n\nconst updateCmd = `docker compose pull ${prev.service} && docker compose up -d --no-deps --force-recreate ${prev.service}`;\n\nconst msg = `\\ud83d\\udd14 Docker Update Available\\n\\n\\ud83d\\udce6 Image: ${prev.image}\\n\\ud83d\\udc33 Container: ${prev.container}\\n\\n\\ud83e\\udd16 Gemini Analysis:\\n${analysis}\\n\\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\\nTo update (run in workstation):\\n${updateCmd}`;\n\nreturn [{ json: { message: msg } }];"
+      },
+      "id": "a1000001-0000-0000-0000-000000000005",
+      "name": "Format Telegram Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $env.TELEGRAM_BOT_TOKEN + '/sendMessage' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_CHAT_ID, text: $json.message }) }}",
+        "options": { "timeout": 10000 }
+      },
+      "id": "a1000001-0000-0000-0000-000000000006",
+      "name": "Send Telegram Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1300, 200]
+    }
+  ],
+  "connections": {
+    "DIUN Webhook": {
+      "main": [[{ "node": "Is Update?", "type": "main", "index": 0 }]]
+    },
+    "Is Update?": {
+      "main": [
+        [{ "node": "Build Gemini Prompt", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Build Gemini Prompt": {
+      "main": [[{ "node": "Gemini Research", "type": "main", "index": 0 }]]
+    },
+    "Gemini Research": {
+      "main": [[{ "node": "Format Telegram Message", "type": "main", "index": 0 }]]
+    },
+    "Format Telegram Message": {
+      "main": [[{ "node": "Send Telegram Alert", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "id": "cryptex-diun-intelligence",
+  "meta": { "instanceId": "cryptex" },
+  "pinData": {}
+}

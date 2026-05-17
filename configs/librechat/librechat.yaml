@@ -1,0 +1,89 @@
+version: 1.2.1
+
+cache: true
+
+registration:
+  socialLogins: ["openid"]
+  allowedDomains:
+    - psidex.com
+    - gmail.com
+
+mcpSettings:
+  allowedDomains:
+    - "http://cryptex-n8n:5678"
+
+endpoints:
+  google:
+    apiKey: "${GEMINI_API_KEY}"
+    models:
+      default:
+        - gemini-2.5-flash
+        - gemini-2.5-pro
+        - gemini-2.0-flash
+        - gemini-1.5-pro
+      fetch: false
+    titleConvo: true
+    titleModel: gemini-2.5-flash
+
+  custom:
+    - name: "OpenRouter"
+      apiKey: "${OPENROUTER_KEY}"
+      baseURL: "https://openrouter.ai/api/v1"
+      models:
+        default:
+          - anthropic/claude-sonnet-4-5
+          - anthropic/claude-opus-4
+          - openai/gpt-4o
+          - openai/gpt-4o-mini
+          - google/gemini-2.5-pro-preview
+          - google/gemini-2.0-flash-001
+          - meta-llama/llama-3.3-70b-instruct
+          - deepseek/deepseek-r1
+          - mistralai/mistral-large
+        fetch: true
+      titleConvo: true
+      titleModel: "openai/gpt-4o-mini"
+      dropParams:
+        - "stop"
+
+    - name: "Groq"
+      apiKey: "${GROQ_API_KEY}"
+      baseURL: "https://api.groq.com/openai/v1"
+      models:
+        default:
+          - llama-3.3-70b-versatile
+          - llama3-70b-8192
+          - llama-3.1-8b-instant
+          - mixtral-8x7b-32768
+          - gemma2-9b-it
+        fetch: true
+      titleConvo: true
+      titleModel: "llama-3.3-70b-versatile"
+
+    - name: "NVIDIA NIM"
+      apiKey: "${NVIDIA_NIM_API_KEY}"
+      baseURL: "https://integrate.api.nvidia.com/v1"
+      models:
+        default:
+          - meta/llama-3.3-70b-instruct
+          - nvidia/llama-3.1-nemotron-70b-instruct
+          - mistralai/mistral-large-2-instruct
+          - microsoft/phi-3-medium-128k-instruct
+          - google/gemma-3-27b-it
+        fetch: true
+      titleConvo: true
+      titleModel: "meta/llama-3.3-70b-instruct"
+
+mcpServers:
+  n8n:
+    type: streamable-http
+    url: http://cryptex-n8n:5678/mcp/cryptex
+    timeout: 30000
+
+interface:
+  privacyPolicy:
+    externalUrl: "https://psidex.com"
+    openNewTab: true
+  termsOfService:
+    externalUrl: "https://psidex.com"
+    openNewTab: true

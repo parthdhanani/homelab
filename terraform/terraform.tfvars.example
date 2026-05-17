@@ -1,0 +1,29 @@
+# terraform.tfvars
+# Copy to terraform.tfvars and fill in your values
+# NEVER commit terraform.tfvars to git
+
+# Oracle Cloud credentials (from ~/.oci/config)
+tenancy_ocid = "ocid1.tenancy.oc1..your-tenancy-ocid"
+user_ocid    = "ocid1.user.oc1..your-user-ocid"
+fingerprint  = "xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx"
+region       = "ap-mumbai-1"
+
+private_key_path = "~/.oci/oci_api_key.pem"
+
+# Compartment (root = same as tenancy_ocid)
+compartment_id = "ocid1.tenancy.oc1..your-tenancy-ocid"
+
+# Availability domain
+# Get with: oci iam availability-domain list --compartment-id <compartment-ocid>
+availability_domain = "eHVA:AP-MUMBAI-1-AD-1"
+
+# SSH public key (from ~/.ssh/cryptex_vps.pub)
+# IMPORTANT: No leading spaces — paste the key exactly as-is
+ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... cryptex@oracle"
+
+# Instance config (defaults are free tier max)
+instance_display_name   = "cryptex-vps"
+instance_shape          = "VM.Standard.A1.Flex"
+instance_ocpus          = 4
+instance_memory_in_gbs  = 24
+boot_volume_size_in_gbs = 100

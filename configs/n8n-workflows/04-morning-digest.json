@@ -1,0 +1,157 @@
+{
+  "name": "CRYPTEX — Morning News Digest",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 6,
+              "triggerAtMinute": 30
+            }
+          ]
+        }
+      },
+      "id": "a4000001-0000-0000-0000-000000000001",
+      "name": "Daily 6:30am UTC",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Miniflux Basic auth header\nconst authHeader = 'Basic ' + Buffer.from(`${$env.MINIFLUX_ADMIN_USER}:${$env.MINIFLUX_ADMIN_PASSWORD}`).toString('base64');\nreturn [{ json: { authHeader } }];"
+      },
+      "id": "a4000001-0000-0000-0000-000000000002",
+      "name": "Build Auth",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://cryptex-miniflux:8080/v1/entries?status=unread&limit=80&order=published_at&direction=desc",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.authHeader }}"
+            }
+          ]
+        },
+        "options": { "timeout": 15000 }
+      },
+      "id": "a4000001-0000-0000-0000-000000000003",
+      "name": "Fetch Unread",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst since = new Date(Date.now() - 24 * 60 * 60 * 1000);\n\nconst entries = (data.entries || []).filter(e => new Date(e.published_at) >= since);\n\nif (entries.length === 0) {\n  return [{ json: { hasEntries: false, count: 0, prompt: '' } }];\n}\n\nconst articleList = entries.slice(0, 60).map(e => ({\n  id: e.id,\n  title: e.title,\n  feed: e.feed ? e.feed.title : 'Unknown',\n  summary: (e.content || e.summary || '').replace(/<[^>]*>/g, '').substring(0, 200)\n}));\n\nconst prompt = `You are my personal news assistant. Below are my unread RSS articles from the last 24 hours.\n\nTasks:\n1. Group articles by topic (e.g. Football, World News, Tech, etc.)\n2. Select the most important/interesting — max 10 total across all groups\n3. For each, write ONE concise sentence summarizing the key point\n4. Skip duplicates and clickbait\n\nFormat as a Telegram message:\n⚽ *Football*\n• Title — Summary. (Feed Name)\n\n🌍 *World News*\n• Title — Summary. (Feed Name)\n\nMax 350 words. Use relevant emoji for each category heading.\n\nArticles:\n${JSON.stringify(articleList)}`;\n\nreturn [{ json: { hasEntries: true, count: entries.length, prompt } }];"
+      },
+      "id": "a4000001-0000-0000-0000-000000000004",
+      "name": "Prepare for AI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "id": "has-entries",
+              "leftValue": "={{ $json.hasEntries }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "a4000001-0000-0000-0000-000000000005",
+      "name": "Has Entries?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1080, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=' + $env.GEMINI_API_KEY }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ contents: [{ parts: [{ text: $json.prompt }] }], generationConfig: { maxOutputTokens: 600, temperature: 0.3 } }) }}",
+        "options": { "timeout": 30000 }
+      },
+      "id": "a4000001-0000-0000-0000-000000000006",
+      "name": "Gemini Digest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1300, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const gemRes = $input.first().json;\nconst prev = $('Prepare for AI').first().json;\n\nlet digest = '';\ntry {\n  digest = gemRes.candidates[0].content.parts[0].text.trim();\n} catch(e) {\n  digest = 'AI summarization unavailable — check Gemini API key.';\n}\n\nconst date = new Date().toLocaleDateString('en-IN', {\n  weekday: 'short', day: 'numeric', month: 'short',\n  timeZone: 'Asia/Kolkata'\n});\n\nconst msg = `📰 *Morning Digest — ${date}*\n_(${prev.count} articles scanned)_\n\n${digest}`;\n\nreturn [{ json: { message: msg } }];"
+      },
+      "id": "a4000001-0000-0000-0000-000000000007",
+      "name": "Format Digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1520, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $env.TELEGRAM_BOT_TOKEN + '/sendMessage' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_CHAT_ID, text: $json.message, parse_mode: 'Markdown' }) }}",
+        "options": { "timeout": 10000 }
+      },
+      "id": "a4000001-0000-0000-0000-000000000008",
+      "name": "Send Digest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1740, 200]
+    }
+  ],
+  "connections": {
+    "Daily 6:30am UTC": {
+      "main": [[{ "node": "Build Auth", "type": "main", "index": 0 }]]
+    },
+    "Build Auth": {
+      "main": [[{ "node": "Fetch Unread", "type": "main", "index": 0 }]]
+    },
+    "Fetch Unread": {
+      "main": [[{ "node": "Prepare for AI", "type": "main", "index": 0 }]]
+    },
+    "Prepare for AI": {
+      "main": [[{ "node": "Has Entries?", "type": "main", "index": 0 }]]
+    },
+    "Has Entries?": {
+      "main": [
+        [{ "node": "Gemini Digest", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Gemini Digest": {
+      "main": [[{ "node": "Format Digest", "type": "main", "index": 0 }]]
+    },
+    "Format Digest": {
+      "main": [[{ "node": "Send Digest", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "id": "cryptex-morning-digest",
+  "meta": { "instanceId": "cryptex" },
+  "pinData": {}
+}

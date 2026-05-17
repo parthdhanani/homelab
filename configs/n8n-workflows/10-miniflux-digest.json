@@ -1,0 +1,112 @@
+{
+  "name": "10-miniflux-digest",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "miniflux-new-entry",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Miniflux Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "miniflux-new-entry"
+    },
+    {
+      "parameters": {
+        "jsCode": "const entry = $input.first().json.body ?? $input.first().json;\nconst feed = entry.feed ?? {};\n\n// Skip entries older than 24h (handles webhook replays)\nconst published = new Date(entry.published_at ?? Date.now());\nconst ageHours = (Date.now() - published.getTime()) / 3_600_000;\nif (ageHours > 24) return [];\n\nreturn [{\n  json: {\n    id: entry.id,\n    title: entry.title,\n    url: entry.url,\n    feed_title: feed.title ?? 'Unknown Feed',\n    category: feed.category?.title ?? 'Uncategorised',\n    published_at: entry.published_at,\n    summary: (entry.content ?? '').replace(/<[^>]+>/g, '').slice(0, 400)\n  }\n}];"
+      },
+      "id": "parse-entry",
+      "name": "Parse Entry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.category }}",
+              "rightValue": "ignore",
+              "operator": { "type": "string", "operation": "notContains" }
+            }
+          ]
+        }
+      },
+      "id": "filter-category",
+      "name": "Skip Ignored Categories",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "model": "gemini-2.5-flash",
+        "options": {},
+        "messages": {
+          "values": [
+            {
+              "content": "You are a concise news summariser. Given this article, write exactly 2 sentences: what happened and why it matters. No fluff.\n\nTitle: {{ $json.title }}\nFeed: {{ $json.feed_title }}\nExcerpt: {{ $json.summary }}"
+            }
+          ]
+        }
+      },
+      "id": "gemini-summarise",
+      "name": "Gemini Summary",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [960, 240]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "📰 *{{ $('Parse Entry').item.json.feed_title }}*\n[{{ $('Parse Entry').item.json.title }}]({{ $('Parse Entry').item.json.url }})\n\n{{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "Markdown",
+          "disable_web_page_preview": true
+        }
+      },
+      "id": "telegram-send",
+      "name": "Send to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1200, 240]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "ok"
+      },
+      "id": "webhook-response",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [960, 420]
+    }
+  ],
+  "connections": {
+    "Miniflux Webhook": {
+      "main": [[{ "node": "Parse Entry", "type": "main", "index": 0 }]]
+    },
+    "Parse Entry": {
+      "main": [[{ "node": "Skip Ignored Categories", "type": "main", "index": 0 }]]
+    },
+    "Skip Ignored Categories": {
+      "main": [
+        [{ "node": "Gemini Summary", "type": "main", "index": 0 }],
+        [{ "node": "Respond 200", "type": "main", "index": 0 }]
+      ]
+    },
+    "Gemini Summary": {
+      "main": [[{ "node": "Send to Telegram", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
