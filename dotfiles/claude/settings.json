@@ -1,0 +1,254 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:docs.claude.com)",
+      "WebFetch(domain:hub.docker.com)",
+      "WebFetch(domain:moodle.org)",
+      "WebFetch(domain:developers.cloudflare.com)",
+      "WebFetch(domain:docs.moodle.org)",
+      "WebFetch(domain:ai.google.dev)",
+      "WebFetch(domain:discuss.ai.google.dev)",
+      "WebFetch(domain:support.google.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:registry.npmjs.org)",
+      "WebFetch(domain:help.obsidian.md)",
+      "WebFetch(domain:www.reddit.com)",
+      "WebFetch(domain:news.ycombinator.com)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "Bash(tree:*)",
+      "Bash(ls:*)",
+      "Bash(echo:*)",
+      "Bash(cat:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(du:*)",
+      "Bash(sort:*)",
+      "Bash(tr:*)",
+      "Bash(awk:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(file:*)",
+      "Bash(test:*)",
+      "Bash(chmod [0-7]* /home/ubuntu/*)",
+      "Bash(chmod +x /home/ubuntu/*)",
+      "Bash(chmod +x ~/.claude/*)",
+      "Bash(chmod +x /opt/cryptex/*)",
+      "Bash(curl:*)",
+      "Bash(bash:*)",
+      "Bash(rsync:*)",
+      "Bash(tar:*)",
+      "Bash(node:*)",
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(python3:*)",
+      "Bash(pip3:*)",
+      "Bash(pip install:*)",
+      "Bash(shellcheck:*)",
+      "Bash(docker:*)",
+      "Bash(git:*)",
+      "Bash(claude:*)",
+      "Bash(gemini:*)",
+      "Bash(source:*)",
+      "Bash(cp:*)",
+      "Bash(mkdir:*)",
+      "Bash(head:*)",
+      "Bash(unzip:*)",
+      "Bash(ssh:*)",
+      "Bash(scp:*)",
+      "Bash(printf:*)",
+      "Bash(fc-list)",
+      "Bash(sed:*)",
+      "Bash(tee:*)",
+      "Bash(xargs:*)",
+      "Bash(rm:*)",
+      "Bash(wait)",
+      "Bash(sudo systemctl:*)",
+      "Bash(sudo apt-get:*)",
+      "Bash(sudo find:*)",
+      "Bash(sudo ls:*)",
+      "Bash(sudo mkdir:*)",
+      "Bash(sudo tee:*)",
+      "Bash(lscpu)",
+      "Bash(ps aux:*)",
+      "Bash(systemctl status:*)",
+      "Bash(systemctl is-active:*)",
+      "Skill(update-config)",
+      "Read(/home/ubuntu/.claude/**)"
+    ],
+    "defaultMode": "default",
+    "disableAutoMode": "disable"
+  },
+  "disabledMcpjsonServers": [
+    "claude.ai Gmail",
+    "claude.ai Google Calendar",
+    "claude.ai Google Drive",
+    "claude.ai Indeed",
+    "claude.ai PayPal"
+  ],
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": []
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ \\! -f \".claudeignore\" ] && { [ -f \"package.json\" ] || [ -d \".git\" ] || [ -f \"composer.json\" ]; }; then cp ~/.claude/claudeignore-template .claudeignore && echo \"Auto-created .claudeignore for this project.\"; fi",
+            "once": true
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/managed_hooks.sh"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/user-prompt-submit.sh"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/pre-tool-use.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/pre-tool-use.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/pre-tool-use.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/pre-tool-use.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/pre-tool-use.sh"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/pre-compact.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/session-summary-to-pkm.sh",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": []
+      }
+    ],
+    "PostCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/post-compact.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/post-edit-lint.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude/statusline-command.sh"
+  },
+  "enabledPlugins": {
+    "imessage@claude-plugins-official": false,
+    "context7@claude-plugins-official": false,
+    "telegram@claude-plugins-official": false
+  },
+  "effortLevel": "medium",
+  "autoCompactEnabled": true,
+  "cleanupPeriodDays": 14,
+  "autoDreamEnabled": false,
+  "theme": "dark",
+  "mcpServers": {
+    "n8n": {
+      "type": "http",
+      "url": "http://127.0.0.1:5678/mcp"
+    },
+    "ob1": {
+      "type": "http",
+      "url": "http://127.0.0.1:8000/mcp"
+    }
+  }
+}
