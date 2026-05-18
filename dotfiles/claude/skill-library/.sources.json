@@ -1,0 +1,128 @@
+{
+  "impeccable": {
+    "repo": "https://github.com/pbakaus/impeccable",
+    "prefix": "impeccable-",
+    "skills_path": "source/skills",
+    "installed": "2026-03-22"
+  },
+  "test-driven-development": {
+    "url": "https://github.com/obra/superpowers",
+    "path": "skills/test-driven-development",
+    "type": "github_tree",
+    "last_updated": "2026-03-24"
+  },
+  "systematic-debugging": {
+    "url": "https://github.com/obra/superpowers",
+    "path": "skills/systematic-debugging",
+    "type": "github_tree",
+    "last_updated": "2026-03-24"
+  },
+  "verification-before-completion": {
+    "url": "https://github.com/obra/superpowers",
+    "path": "skills/verification-before-completion",
+    "type": "github_tree",
+    "last_updated": "2026-03-24"
+  },
+  "brainstorming": {
+    "url": "https://github.com/obra/superpowers",
+    "path": "skills/brainstorming",
+    "type": "github_tree",
+    "last_updated": "2026-03-24"
+  },
+  "writing-plans": {
+    "url": "https://github.com/obra/superpowers",
+    "path": "skills/writing-plans",
+    "type": "github_tree",
+    "last_updated": "2026-03-24"
+  },
+  "using-git-worktrees": {
+    "url": "https://github.com/obra/superpowers",
+    "path": "skills/using-git-worktrees",
+    "type": "github_tree",
+    "last_updated": "2026-03-24"
+  },
+  "subagent-driven-development": {
+    "url": "https://github.com/obra/superpowers",
+    "path": "skills/subagent-driven-development",
+    "type": "github_tree",
+    "last_updated": "2026-03-24"
+  },
+  "executing-plans": {
+    "url": "https://github.com/obra/superpowers",
+    "path": "skills/executing-plans",
+    "type": "github_tree",
+    "last_updated": "2026-03-24"
+  },
+  "dispatching-parallel-agents": {
+    "url": "https://github.com/obra/superpowers",
+    "path": "skills/dispatching-parallel-agents",
+    "type": "github_tree",
+    "last_updated": "2026-03-24"
+  },
+  "requesting-code-review": {
+    "url": "https://github.com/obra/superpowers",
+    "path": "skills/requesting-code-review",
+    "type": "github_tree",
+    "last_updated": "2026-03-24"
+  },
+  "receiving-code-review": {
+    "url": "https://github.com/obra/superpowers",
+    "path": "skills/receiving-code-review",
+    "type": "github_tree",
+    "last_updated": "2026-03-24"
+  },
+  "finishing-a-development-branch": {
+    "url": "https://github.com/obra/superpowers",
+    "path": "skills/finishing-a-development-branch",
+    "type": "github_tree",
+    "last_updated": "2026-03-24"
+  },
+  "changelog-generator": {
+    "url": "https://github.com/ComposioHQ/awesome-claude-skills",
+    "path": "changelog-generator",
+    "type": "github_tree",
+    "last_updated": "2026-03-24"
+  },
+  "content-research-writer": {
+    "url": "https://github.com/ComposioHQ/awesome-claude-skills",
+    "path": "content-research-writer",
+    "type": "github_tree",
+    "last_updated": "2026-03-24"
+  },
+  "domain-name-brainstormer": {
+    "url": "https://github.com/ComposioHQ/awesome-claude-skills",
+    "path": "domain-name-brainstormer",
+    "type": "github_tree",
+    "last_updated": "2026-03-24"
+  },
+  "langsmith-fetch": {
+    "url": "https://github.com/ComposioHQ/awesome-claude-skills",
+    "path": "langsmith-fetch",
+    "type": "github_tree",
+    "last_updated": "2026-03-24"
+  },
+  "mcp-builder": {
+    "url": "https://github.com/ComposioHQ/awesome-claude-skills",
+    "path": "mcp-builder",
+    "type": "github_tree",
+    "last_updated": "2026-03-24"
+  },
+  "webapp-testing": {
+    "url": "https://github.com/ComposioHQ/awesome-claude-skills",
+    "path": "webapp-testing",
+    "type": "github_tree",
+    "last_updated": "2026-03-24"
+  },
+  "artifacts-builder": {
+    "url": "https://github.com/ComposioHQ/awesome-claude-skills",
+    "path": "artifacts-builder",
+    "type": "github_tree",
+    "last_updated": "2026-03-24"
+  },
+  "skimport-5xvtsvt9": {
+    "url": "https://github.com/Nuclear-Marmalade/ux-psychology-skill",
+    "path": "SKILL.md",
+    "type": "github_tree",
+    "last_updated": "2026-04-02"
+  }
+}

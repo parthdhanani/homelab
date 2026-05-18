@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Post-commit hook → OB1 memory engine
+# Captures commit message + changed files and stores in semantic memory.
+# Fails silently — never block a commit.
+
+set +e
+
+OB1_URL="http://172.18.0.52:8000/api/remember"
+
+MSG=$(git log -1 --pretty=%B 2>/dev/null | head -5 | tr '\n' ' ')
+FILES=$(git diff-tree --no-commit-id -r --name-only HEAD 2>/dev/null | head -20 | tr '\n' ' ')
+REPO=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)")
+SHA=$(git rev-parse --short HEAD 2>/dev/null)
+
+[ -z "$MSG" ] && exit 0
+
+CONTENT="git commit in $REPO ($SHA): $MSG | files: $FILES"
+
+PAYLOAD=$(python3 -c "
+import json, sys
+print(json.dumps({
+    'content': sys.argv[1],
+    'source': 'git-commit',
+    'tags': ['git', 'commit', sys.argv[2]]
+}))
+" "$CONTENT" "$REPO" 2>/dev/null)
+
+[ -z "$PAYLOAD" ] && exit 0
+
+curl -sf --max-time 5 -X POST \
+    -H "Content-Type: application/json" \
+    -d "$PAYLOAD" \
+    "$OB1_URL" 2>/dev/null || true
+
+exit 0

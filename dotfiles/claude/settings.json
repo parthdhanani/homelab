@@ -1,4 +1,5 @@
 {
+  "cleanupPeriodDays": 14,
   "permissions": {
     "allow": [
       "WebSearch",
@@ -10,6 +11,8 @@
       "WebFetch(domain:moodle.org)",
       "WebFetch(domain:developers.cloudflare.com)",
       "WebFetch(domain:docs.moodle.org)",
+      "WebFetch(domain:blog.webnersolutions.com)",
+      "WebFetch(domain:edwiser.org)",
       "WebFetch(domain:ai.google.dev)",
       "WebFetch(domain:discuss.ai.google.dev)",
       "WebFetch(domain:support.google.com)",
@@ -66,6 +69,21 @@
       "Bash(xargs:*)",
       "Bash(rm:*)",
       "Bash(wait)",
+      "Bash(notebooklm --help)",
+      "Bash(notebooklm list:*)",
+      "Bash(notebooklm skill:*)",
+      "Bash(notebooklm source:*)",
+      "Bash(notebooklm artifact:*)",
+      "Bash(notebooklm research:*)",
+      "Bash(notebooklm ask:*)",
+      "Bash(notebooklm create:*)",
+      "Bash(notebooklm download:*)",
+      "Bash(notebooklm generate:*)",
+      "Bash(notebooklm metadata:*)",
+      "Bash(notebooklm status:*)",
+      "Bash(notebooklm use:*)",
+      "Bash(notebooklm rename:*)",
+      "Bash(notebooklm delete:*)",
       "Bash(sudo systemctl:*)",
       "Bash(sudo apt-get:*)",
       "Bash(sudo find:*)",
@@ -237,10 +255,9 @@
     "telegram@claude-plugins-official": false
   },
   "effortLevel": "medium",
-  "autoCompactEnabled": true,
-  "cleanupPeriodDays": 14,
   "autoDreamEnabled": false,
   "theme": "dark",
+  "autoCompactEnabled": true,
   "mcpServers": {
     "n8n": {
       "type": "http",
@@ -250,5 +267,6 @@
       "type": "http",
       "url": "http://127.0.0.1:8000/mcp"
     }
-  }
+  },
+  "model": "opus"
 }

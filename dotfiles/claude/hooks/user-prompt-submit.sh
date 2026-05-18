@@ -33,7 +33,7 @@ SKILL_PID=$!
 # OB1 semantic memory (network, up to 2s)
 ENCODED=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1][:500]))" "$PROMPT" 2>/dev/null)
 if [ -n "$ENCODED" ]; then
-    curl -sf --max-time 2 "http://172.18.0.52:8000/api/search?q=${ENCODED}&k=4" > "$OB1_TMP" 2>/dev/null &
+    curl -sf --max-time 2 "http://127.0.0.1:8000/api/search?q=${ENCODED}&k=4" > "$OB1_TMP" 2>/dev/null &
     OB1_PID=$!
 fi
 

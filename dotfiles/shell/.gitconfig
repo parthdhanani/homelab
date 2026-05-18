@@ -1,0 +1,5 @@
+[core]
+	hooksPath = /home/ubuntu/.git-hooks
+[user]
+	email = parth1707ster@gmail.com
+	name = Parth Dhanani

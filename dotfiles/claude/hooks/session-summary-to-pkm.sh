@@ -70,7 +70,7 @@ print(json.dumps({'content': summary, 'source': 'session', 'tags': ['session-sum
         curl -sf --max-time 5 -X POST \
             -H "Content-Type: application/json" \
             -d "$PAYLOAD" \
-            http://172.18.0.52:8000/api/remember 2>/dev/null || true
+            http://127.0.0.1:8000/api/remember 2>/dev/null || true
     fi
 fi
 
