@@ -1,243 +1,139 @@
-# cryptex
+# Cryptex
 
-Full infrastructure stack for psidex.com — Oracle Cloud ARM64, ~30 Docker containers, Cloudflare Tunnel.
+Self-hosted personal-cloud stack — ~30 Docker containers behind a Cloudflare Tunnel, running on Oracle Cloud Always-Free ARM64.
 
-> **Private repo.** Clone this to restore the exact setup on a new VPS.
+This repo is **the canonical replication kit**: a fresh Oracle VPS → fully running stack with one command.
 
-See [homelab](https://github.com/parthdhanani/homelab) for the sanitized public reference with architecture diagram.
-
----
-
-## Restore Sequence
-
-Complete step-by-step to go from a fresh Oracle Cloud ARM64 instance to the full running stack.
-
-### 1. Provision the VPS
-
-Oracle Cloud Free Tier: Ubuntu 22.04, ARM64, 4 vCPU / 24GB RAM.
-
-In Oracle Console → Networking → Security Lists: open ports **80** and **443** (TCP ingress). SSH (22) should already be open.
-
-### 2. Bootstrap the host
+## TL;DR
 
 ```bash
-# SSH in as ubuntu, then:
+git clone git@github.com:parthdhanani/cryptex.git /opt/cryptex
+cd /opt/cryptex
+./replicate.sh                  # interactive bootstrap (00 → 05)
+```
+
+Re-running `./replicate.sh` at any time is safe — every step is idempotent.
+
+For full DR (including data restore from Kopia):
+```bash
+./replicate.sh --restore
+```
+
+See [`bootstrap/README.md`](bootstrap/README.md) for the phase-by-phase reference.
+
+## What's in the box
+
+| Path | Purpose |
+|---|---|
+| `docker-compose.yml` | The whole stack — Postgres, n8n, Forgejo, Vaultwarden, Moodle, LibreChat, LM, Kopia, Cloudflared, etc. |
+| `replicate.sh` | One-command idempotent bootstrap. Orchestrates `bootstrap/*` |
+| `bootstrap/` | Phased scripts (`00-system` → `06-restore`) — each independently re-runnable |
+| `system/` | Captured host state: iptables, systemd units, nginx, fail2ban, cron, packages, sysctl |
+| `dotfiles/` | `~/.claude` (skills, hooks, commands, agents) + shell rc files |
+| `configs/` | Per-service config (nginx, postgres init, pgbouncer, adguard, moodle, n8n workflows, zellij, …) |
+| `scripts/` | Operational scripts: backup, watchdog, health-check, container-update-notify, … |
+| `dockerfiles/` | Custom images (moodle, traxlrs, portfolio, …) |
+| `terraform/` | Oracle Cloud infra (optional) |
+| `mcp/` | Model Context Protocol servers used by the stack |
+| `workspace/` | AI_Space companion (skill-library reference, mac SSH setup, credentials template) |
+| `legacy/` | Archived v2-rebuild for historical diff/reference |
+| `.env.example` | Template — copy to `.env`, fill values per `SECRETS.md` |
+| `SECRETS.md` | Where each secret comes from (CF console, B2, etc.) and rotation playbook |
+
+## Stack overview
+
+Public surface — all behind Cloudflare Tunnel, no open ports:
+
+| Domain | Service |
+|---|---|
+| `psidex.com` | Portfolio (static) |
+| `vault.psidex.com` | Vaultwarden |
+| `git.psidex.com` | Forgejo |
+| `chat.psidex.com` | LibreChat |
+| `n8n.psidex.com` | n8n |
+| `lms.psidex.com` | Moodle + TRAX LRS |
+| `files.psidex.com` | OpenList (file browser → multi-cloud) |
+| `budget.psidex.com` | Actual Budget |
+| `read.psidex.com` | Miniflux |
+| `notes.psidex.com` | MkDocs (PKM published) |
+| `s.psidex.com` | Shlink (URL shortener) |
+| `analytics.psidex.com` | Umami |
+| `id.psidex.com` | PocketID (OIDC) |
+| `status.psidex.com` | Uptime Kuma |
+| `tools.psidex.com` | IT-Tools |
+| `search.psidex.com` | SearXNG |
+| `pdf.psidex.com` | Stirling-PDF |
+| `dns.psidex.com` | AdGuard Home (LAN-only via Tailscale) |
+| `aqua.psidex.com` | AquaSoul (secondary site, route pending) |
+
+Internal:
+
+- `cryptex-postgres` + `cryptex-pgbouncer` + `cryptex-pgvector` — DB layer
+- `cryptex-redis`, `cryptex-ferretdb`, `cryptex-mongodb` — auxiliary stores
+- `cryptex-kopia` — encrypted backups → Backblaze B2 daily
+- `cryptex-dockhand` — container management UI
+- `cryptex-ob1` — semantic memory MCP, used by Claude Code
+
+## Replication on a fresh Oracle VPS
+
+Prereqs (one-time, manual, in OCI console):
+
+1. Launch an Always-Free **ARM64** Ubuntu 22.04 instance (4 OCPU / 24 GB).
+2. Open Security List rules: 22/tcp (SSH), 80/tcp, 443/tcp.
+3. SSH key added to instance.
+4. Note your Cloudflare account + a tunnel name you'll create.
+
+Then:
+
+```bash
+ssh ubuntu@<your-vps-ip>
+sudo apt-get update && sudo apt-get install -y git
 git clone git@github.com:parthdhanani/cryptex.git /opt/cryptex
 cd /opt/cryptex
 
-# Bootstrap: iptables, Docker, swap, packages
-sudo ./scripts/bootstrap.sh
+# Either run interactively
+./replicate.sh
+
+# Or, if you'll paste values via nano
+./replicate.sh --skeleton-env
+nano .env                                  # fill CHANGE_ME_* from your password manager
+./replicate.sh --skip-secrets
+
+# DR (with data restore from Kopia)
+./replicate.sh --restore
 ```
 
-`bootstrap.sh` sets up:
-- Docker CE + compose plugin
-- iptables rules (`-I INPUT 6`) for ports 80/443 (SSH already open)
-- 4 GB swapfile (Oracle free tier has no swap by default)
-- System packages: jq, socat, shellcheck, python3, etc.
+Expected time end-to-end on Always-Free ARM: 15–25 minutes (mostly image pulls).
 
-### 3. Configure environment
+## What is NOT automated
 
-```bash
-cp .env.example .env
-vim .env          # fill in ALL values — see comments in .env.example
-chmod 600 .env
-```
+- Oracle Security List + reserved public IP — manual in OCI console
+- DNS A/CNAME records pointing to your CF Tunnel — manual in your DNS host
+- Cloudflare Tunnel creation + token — manual in CF Zero Trust dashboard
+- First-run admin user setup (Vaultwarden, Forgejo, PocketID) — via web UI
+- Backblaze B2 bucket + application keys — manual in B2 console
+- Mac-side autossh tunnel — see `workspace/setup-mac-ssh.md`
 
-Key values required before first start:
-- `CF_TUNNEL_TOKEN` — from Cloudflare Zero Trust dashboard
-- All `*_DB_PASSWORD` values
-- `MOODLE_ADMIN_PASSWORD`, `TRAXLRS_APP_KEY`, `FORGEJO_SECRET_KEY`
-- `N8N_ENCRYPTION_KEY`, `KOPIA_PASSWORD`
-- `VAULTWARDEN_ADMIN_TOKEN` — argon2id hash, generate with: `./scripts/gen-vaultwarden-token.sh`
-
-### 4. Start the container stack
+## Day-2 operations
 
 ```bash
-cd /opt/cryptex
-docker compose up -d
+# Update all containers (also runs weekly via cron)
+./update.sh
 
-# Watch startup
-docker compose logs -f --tail 20
-```
-
-Allow 2-3 minutes for PostgreSQL init and Moodle first-run setup.
-
-### 5. Install CLI tools and dotfiles
-
-```bash
-# Run as ubuntu (not root)
-cd /opt/cryptex
-bash scripts/install-tools.sh
-```
-
-This installs:
-- **npm globals**: `@anthropic-ai/claude-code`, `@google/gemini-cli`, `claude-code-cache-fix`, `codeburn`
-- **Python tools**: graphifyy, mkdocs-material, mkdocs-roamlinks-plugin, watchdog
-- **Shell tools**: starship, zoxide, code-server, socat, jq, shellcheck
-- **Dotfiles**: `~/.bashrc`, `~/.config/starship.toml`, `~/.claude/` (hooks, commands, settings, statusline)
-- **Systemd services**: `code-server` (port 8080), `claude-cache-proxy` (port 9801)
-- **Root crontab**: from `crontab.txt`
-
-### 6. Authenticate AI tools
-
-```bash
-source ~/.bashrc
-
-# Claude Code — requires ANTHROPIC_API_KEY in environment or:
-claude auth login
-
-# Gemini CLI
-gemini auth login
-```
-
-### 7. Fix OB1 MCP URL
-
-OB1 runs as a container; its IP is assigned at runtime:
-
-```bash
-OB1_IP=$(docker inspect cryptex-ob1 --format '{{.NetworkSettings.Networks.cryptex_default.IPAddress}}')
-echo "OB1 IP: $OB1_IP"
-
-# Update ~/.claude/settings.json → mcpServers.ob1.url
-# e.g. http://172.18.0.52:8000/mcp
-```
-
-The user-prompt-submit hook also queries OB1 directly — update the IP there if it changed:
-```bash
-grep -n '172.18.0' ~/.claude/hooks/user-prompt-submit.sh
-grep -n '172.18.0' ~/.claude/hooks/session-summary-to-pkm.sh
-```
-
-### 8. Restore from Kopia backup (disaster recovery)
-
-```bash
-# If restoring data from a previous installation:
-./scripts/restore.sh /path/to/cryptex-TIMESTAMP.tar.gz
-
-# Or restore from Kopia offsite (Backblaze B2):
-# 1. Connect Kopia to B2 first (needs KOPIA_PASSWORD from .env):
-docker exec cryptex-kopia kopia repository connect b2 \
-    --bucket=YOUR_BUCKET --key-id=YOUR_KEY --key=YOUR_SECRET
-
-# 2. List snapshots:
-docker exec cryptex-kopia kopia snapshot list /backups
-
-# 3. Restore:
-docker exec cryptex-kopia kopia restore <snapshot-id> /opt/cryptex/backups/restored/
-./scripts/restore.sh /opt/cryptex/backups/restored/cryptex-TIMESTAMP.tar.gz
-```
-
-### 9. Set up PKM vault
-
-```bash
-# Vault lives at /opt/cryptex/data/pkm (gitignored, backed up by backup.sh)
-# Symlink for convenience:
-ln -s /opt/cryptex/data/pkm ~/pkm
-
-# If restoring from backup, pkm/ is included in the tarball.
-# If starting fresh, clone or copy your vault here.
-```
-
-### 10. Verify
-
-```bash
-./scripts/health-check.sh
-
-# Check CF tunnel is routing (all routes in docker-compose tunnel config)
-docker logs cryptex-cloudflared --tail 20
-
-# Check all containers healthy
-docker ps --format 'table {{.Names}}\t{{.Status}}'
-```
-
----
-
-## Day-to-Day
-
-```bash
-# Launch Claude Code workspace
-ai                          # alias: cd ~/AI_Space && claude
+# Manual backup (also runs daily at 03:00 UTC via cron)
+sudo ./scripts/backup.sh
 
 # Health check
-/opt/cryptex/scripts/health-check.sh
+sudo ./scripts/health-check.sh
 
-# Update single service
-/opt/cryptex/scripts/update.sh <service>
-
-# Update all services
-/opt/cryptex/scripts/update.sh
-
-# Manual backup
-/opt/cryptex/scripts/backup.sh
-
-# View logs
-docker logs cryptex-<service> --tail 50 -f
+# View what cron does
+cat system/cron/root.crontab
 ```
 
----
+## Why "replicate" instead of just "deploy"?
 
-## Crontab
+A deploy script gets you a running stack once. This kit makes the entire VPS — system layer + container stack + user tooling — **reproducible**: identical state on a fresh machine, no tribal knowledge. The goal is **zero-effort rebuild** the next time Oracle reclaims your instance, you migrate clouds, or you need to clone for staging.
 
-Exact crontab is in `crontab.txt`. Install via:
+## License
 
-```bash
-sudo crontab crontab.txt
-```
-
-| Schedule | Job |
-|---|---|
-| `*/5 * * * *` | health-check-cron.sh + watchdog.sh |
-| `*/15 * * * *` | notes-build.sh (Quartz/PKM static site) |
-| `0 3 * * *` | backup.sh (daily at 03:00 UTC) |
-| `0 4 * * 0` | docker system prune (Sunday) |
-| `0 5 * * 0` | update.sh (Sunday) |
-| `0 4 * * 6` | backup-verify.sh (Saturday) |
-| `* * * * *` | Moodle cron |
-
----
-
-## Dotfiles layout
-
-```
-dotfiles/
-├── .bashrc                     # Shell config: aliases, PATH, starship/zoxide init
-├── starship.toml               # Prompt: no-runtimes, fast
-├── claude/
-│   ├── settings.json           # Claude Code: hooks, MCP servers, permissions
-│   ├── statusline-command.sh   # Status line script
-│   ├── statusline.py           # Status line Python renderer
-│   ├── claudeignore-template   # Auto-applied per project
-│   ├── hooks/
-│   │   ├── pre-tool-use.sh         # Safety: blocks force-push, cred access, unsafe mounts
-│   │   ├── user-prompt-submit.sh   # OB1 semantic search + skill injection on every prompt
-│   │   ├── session-summary-to-pkm.sh # Summarize session → PKM inbox + OB1 memory
-│   │   ├── pre-compact.sh          # Inject context before autoCompact
-│   │   ├── post-compact.sh         # Restore memory after compaction
-│   │   ├── post-edit-lint.sh       # yamllint/shellcheck on edited files
-│   │   ├── managed_hooks.sh        # SessionStart hook: show CLAUDE.md + memory
-│   │   ├── managed_pre_compact.sh  # Compact helper
-│   │   ├── skill-inject.py         # Skill library fuzzy match
-│   │   └── validators/
-│   │       └── iptables-check.sh   # Oracle VPS iptables safety validator
-│   └── commands/
-│       ├── dynamic.md, flow.md, plan.md, save.md, sk.md
-└── code-server/
-    └── config.yaml.example     # code-server: bind 127.0.0.1:8080, no auth
-```
-
----
-
-## Stack
-
-| Category | Services |
-|---|---|
-| **Database** | PostgreSQL 16, PgBouncer, Redis, FerretDB (MongoDB-compatible) |
-| **Auth** | Vaultwarden, Pocket ID (OIDC) |
-| **LMS** | Moodle + TRAX xAPI LRS |
-| **Dev** | Forgejo, Woodpecker CI, n8n |
-| **AI** | LibreChat, SearXNG, OB1 memory engine |
-| **Monitoring** | Uptime Kuma, Dockhand, AdGuard Home |
-| **Storage** | Alist/OpenList, Kopia → Backblaze B2 |
-| **Utilities** | Miniflux, ActualBudget, Shlink, Umami, Stirling PDF, IT-Tools |
-| **Network** | Cloudflare Tunnel, code-server, Zellij web terminal |
-| **CLI** | Claude Code, Gemini CLI, claude-code-cache-fix proxy (port 9801) |
+Private repo. Not for redistribution.
