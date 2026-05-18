@@ -1,0 +1,11 @@
+[Unit]
+Description=Cryptex graphify incremental index update
+After=network.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/opt/cryptex
+ExecStart=/home/ubuntu/.local/bin/graphify --update . --no-viz
+StandardOutput=append:/var/log/cryptex-graphify-update.log
+StandardError=append:/var/log/cryptex-graphify-update.log

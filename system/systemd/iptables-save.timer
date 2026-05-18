@@ -1,0 +1,9 @@
+[Unit]
+Description=Save iptables rules nightly
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

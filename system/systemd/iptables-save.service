@@ -1,0 +1,6 @@
+[Unit]
+Description=Save iptables rules
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'iptables-save | grep -v "f2b-" | grep -v ":f2b-" > /etc/iptables/rules.v4'

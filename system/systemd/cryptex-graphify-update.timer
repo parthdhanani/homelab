@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly cryptex graphify index update
+Requires=cryptex-graphify-update.service
+
+[Timer]
+OnCalendar=*-*-* 03:17:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
