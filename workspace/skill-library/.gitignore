@@ -1,0 +1,7 @@
+# Generated build artifact
+.router/index.json
+.router/__pycache__/
+.router/*.lock/
+
+# Lock marker
+.router/.build.lock
