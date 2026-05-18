@@ -1,0 +1,132 @@
+{
+  "id": "cryptex-weekly-ai-digest",
+  "name": "CRYPTEX: Weekly AI Health Digest (Gemini + Telegram)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 0"
+            }
+          ]
+        }
+      },
+      "id": "weekly-cron",
+      "name": "Weekly Cron (Sunday 8AM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://cryptex-socket-proxy:2375/containers/json?all=true",
+        "options": { "timeout": 10000 }
+      },
+      "id": "get-containers",
+      "name": "Get All Containers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [420, 200],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "http://cryptex-socket-proxy:2375/info",
+        "options": { "timeout": 10000 }
+      },
+      "id": "get-docker-info",
+      "name": "Get Docker Info",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [420, 400],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compile system snapshot for Gemini analysis\nconst containers = $('Get All Containers').item.json;\nconst dockerInfo = $('Get Docker Info').item.json;\n\nconst running = Array.isArray(containers) ? containers.filter(c => c.State === 'running') : [];\nconst stopped = Array.isArray(containers) ? containers.filter(c => c.State !== 'running') : [];\nconst unhealthy = running.filter(c => c.Status && c.Status.toLowerCase().includes('unhealthy'));\n\nconst containerLines = Array.isArray(containers)\n  ? containers.map(c => `  ${c.Names?.[0]?.replace('/', '') || 'unknown'}: ${c.State} (${c.Status})`).join('\\n')\n  : 'Unable to retrieve container list';\n\nconst memTotal = dockerInfo.MemTotal ? Math.round(dockerInfo.MemTotal / 1024 / 1024 / 1024) + 'GB' : 'unknown';\nconst nContainers = dockerInfo.Containers || 'unknown';\nconst nRunning = dockerInfo.ContainersRunning || 'unknown';\n\nconst summary = `CRYPTEX Weekly System Snapshot\nDate: ${new Date().toISOString()}\nHost Memory: ${memTotal}\nTotal Containers: ${nContainers} (${nRunning} running)\nStopped: ${stopped.length}\nUnhealthy: ${unhealthy.length}\n\nContainer Status:\n${containerLines}`;\n\nreturn { json: { summary, running: running.length, stopped: stopped.length, unhealthy: unhealthy.length } };"
+      },
+      "id": "compile-snapshot",
+      "name": "Compile System Snapshot",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={{ $env.GEMINI_API_KEY }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": \"You are a DevOps assistant monitoring a personal self-hosted server called CRYPTEX running 22 Docker containers. Analyze this weekly system snapshot and provide:\\n1. Overall health assessment (1-2 sentences)\\n2. Any concerns or anomalies detected\\n3. One practical tip for this week\\n4. A motivational sign-off\\n\\nBe concise (max 200 words). Use emoji sparingly. System snapshot:\\n\\n{{ $json.summary }}\"\n    }]\n  }]\n}",
+        "options": { "timeout": 30000 }
+      },
+      "id": "gemini-analysis",
+      "name": "Gemini Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [860, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const geminiResponse = $input.item.json;\nconst snapshot = $('Compile System Snapshot').item.json;\n\nlet aiInsight = 'AI analysis unavailable';\ntry {\n  aiInsight = geminiResponse.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from Gemini';\n} catch(e) { aiInsight = 'Gemini parse error: ' + e.message; }\n\nconst status = snapshot.stopped > 0 || snapshot.unhealthy > 0 ? '⚠️' : '✅';\n\nconst msg = `${status} CRYPTEX Weekly Digest — ${new Date().toLocaleDateString('en-US', {weekday:'long', year:'numeric', month:'long', day:'numeric'})}\n\n📊 Containers: ${snapshot.running} running, ${snapshot.stopped} stopped, ${snapshot.unhealthy} unhealthy\n\n🤖 Gemini Analysis:\n${aiInsight}`;\n\nreturn { json: { message: msg } };"
+      },
+      "id": "format-digest",
+      "name": "Format Digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {}
+      },
+      "id": "send-telegram",
+      "name": "Send Weekly Digest",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1300, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "a0000000-0000-0000-0000-000000000001",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Weekly Cron (Sunday 8AM)": {
+      "main": [[
+        { "node": "Get All Containers", "type": "main", "index": 0 },
+        { "node": "Get Docker Info", "type": "main", "index": 0 }
+      ]]
+    },
+    "Get All Containers": {
+      "main": [[{ "node": "Compile System Snapshot", "type": "main", "index": 0 }]]
+    },
+    "Get Docker Info": {
+      "main": [[{ "node": "Compile System Snapshot", "type": "main", "index": 0 }]]
+    },
+    "Compile System Snapshot": {
+      "main": [[{ "node": "Gemini Analysis", "type": "main", "index": 0 }]]
+    },
+    "Gemini Analysis": {
+      "main": [[{ "node": "Format Digest", "type": "main", "index": 0 }]]
+    },
+    "Format Digest": {
+      "main": [[{ "node": "Send Weekly Digest", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "meta": { "templateCredsSetupCompleted": true }
+}

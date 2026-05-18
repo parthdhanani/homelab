@@ -1,0 +1,61 @@
+{
+  "id": "cryptex-health-alert",
+  "name": "CRYPTEX: Health Alert → Telegram → Restart → Claude Diagnosis",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "health-alert",
+        "responseMode": "onReceived",
+        "responseData": "allEntries"
+      },
+      "id": "webhook-health",
+      "name": "Health Alert Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "=🔴 **CRYPTEX Health Alert**\n\nFailed: {{ $json.fail }} container(s)\nPassed: {{ $json.pass }} | Warn: {{ $json.warn }}\n\n```\n{{ $json.failed }}\n```\n\nCommands:\n• `restart <container-name>` — restart it\n• `diagnose <container-name>` — Claude Code analyzes logs\n• `status` — full container list",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "telegram-alert",
+      "name": "Send Telegram Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [450, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "a0000000-0000-0000-0000-000000000001",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Health Alert Webhook": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "cryptex"
+    }
+  ]
+}

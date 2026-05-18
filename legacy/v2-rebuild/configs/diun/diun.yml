@@ -1,0 +1,22 @@
+watch:
+  workers: 10
+  firstCheckNotif: false
+
+notif:
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    ssl: false
+    insecureSkipVerify: false
+  webhook:
+    endpoint: "http://cryptex-n8n:5678/webhook/diun-update"
+    method: POST
+    headers:
+      Content-Type: application/json
+    timeout: 10s
+
+providers:
+  docker:
+    endpoint: "tcp://cryptex-socket-proxy:2375"
+    watchStopped: false
+    watchByDefault: true

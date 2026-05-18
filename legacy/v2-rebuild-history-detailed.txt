@@ -1,0 +1,290 @@
+commit c1d5ad1e815cefe9998b4b6c365a1968d22ffff0
+Author: Parth Dhanani <parthdhanani@Parths-MacBook-Air.local>
+Date:   Sun Mar 29 13:39:16 2026 +0530
+
+    improve: reliability, observability, maintainability — scoring improvements
+    
+    RELIABILITY:
+    - backup.sh: validate postgres dump before accepting it (size + SQL header check per-db)
+    - deploy.sh: n8n workflow dedup now prefers ID match over name match (safe re-deploys)
+    - update.sh: build failure aborts update instead of deploying broken images
+    - docker-compose.yml: n8n now waits for redis service_healthy (not just postgres)
+    
+    OBSERVABILITY:
+    - health-check.sh: alert debounce — max 1 Telegram alert per 15min (state file in /tmp)
+    - health-check.sh: FAILED_LIST now includes health status string, not just state
+    - health-check.sh: alert state cleared on clean run (first failure after recovery fires immediately)
+    - docker-compose.yml: log tag added (cryptex/{{.Name}}) for structured log metadata
+    
+    MAINTAINABILITY:
+    - backup.sh: 172.18.0.8 → cryptex-n8n (container DNS, immune to IP changes)
+    - health-check.sh: 172.18.0.8 → cryptex-n8n
+    - update.sh: 172.18.0.8 → cryptex-n8n (both webhook calls), added --max-time flags
+    - update.sh: deploy.sh n8n import logs now show whether match was by ID or name
+    
+    PRODUCTION READINESS:
+    - scripts/restore.sh: full DR restore script — interactive backup selection, per-service
+      restore (postgres, vaultwarden, moodle, forgejo, trax, adguard, kopia, n8n, actualbudget),
+      integrity validation, post-restore health check, checklist output
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+ docker-compose.yml      |   3 +
+ scripts/backup.sh       |  20 ++++-
+ scripts/deploy.sh       |  11 ++-
+ scripts/health-check.sh |  37 +++++---
+ scripts/restore.sh      | 219 ++++++++++++++++++++++++++++++++++++++++++++++++
+ scripts/update.sh       |   9 +-
+ 6 files changed, 279 insertions(+), 20 deletions(-)
+
+commit 159302e388a8ab94433765441eeb40f3d203a5db
+Author: Parth Dhanani <parthdhanani@Parths-MacBook-Air.local>
+Date:   Sun Mar 29 12:55:52 2026 +0530
+
+    fix: pre-deploy audit — 8 verified bugs fixed
+    
+    BLOCKERS:
+    - health-check.sh: Redis check now passes password (-a REDIS_PASSWORD), was failing NOAUTH
+    - health-check.sh: curl to n8n webhook now has --max-time 5 to prevent alert delay
+    - backup.sh: curl to backup-status webhook now has --max-time 10 to prevent hang
+    - deploy.sh: pre-flight env validation added — fails fast if critical vars missing
+    - deploy.sh: n8n wait timeout increased 90s→180s (seq 1 60) for ARM64 cold start
+    
+    INFRASTRUCTURE:
+    - terraform/main.tf: boot_volume_size_in_gbs uncommented (provider v8.2.0 supports it)
+      Value = 200GB from terraform.tfvars — no more manual resize after provision
+    
+    CLEANUP:
+    - Deleted orphaned: dockerfiles/jwbot.Dockerfile, configs/jwbot/, configs/searxng/
+    - moodle.Dockerfile: Redis DB comment updated (removed stale SearXNG reference)
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+ configs/jwbot/app.py          | 171 ------------------------------------------
+ configs/searxng/settings.yml  |  54 -------------
+ dockerfiles/jwbot.Dockerfile  |  17 -----
+ dockerfiles/moodle.Dockerfile |   2 +-
+ scripts/backup.sh             |   2 +-
+ scripts/deploy.sh             |  29 ++++++-
+ scripts/health-check.sh       |   4 +-
+ terraform/main.tf             |   5 +-
+ 8 files changed, 34 insertions(+), 250 deletions(-)
+
+commit b12f1f3164a6c65f199aa91e6aaf232c003b4c4a
+Author: Parth Dhanani <parthdhanani@Parths-MacBook-Air.local>
+Date:   Sun Mar 29 07:18:51 2026 +0530
+
+    docs: major SETUP-GUIDE.html update — align with v2 18-service stack
+    
+    - Removed: Open WebUI section (§8), all searxng/openwebui/jwbot/stirling-pdf references
+    - Updated: Cloudflare routes table (removed 3 dead routes, workstation port 7681→3000)
+    - Rewrote: Workstation section (TTYD→wetty, Claude login, PKM bot tmux, vault sync)
+    - Added: SCORM Auto-Deploy Pipeline section (§13) with git push → n8n → Moodle flow
+    - Updated: n8n workflows list (added 07-vault-sync + 09-scorm-deploy, disabled 05-movie-search)
+    - Fixed: All container counts 22→18, deploy.sh image count 5→4
+    - Fixed: Verification code block (removed ghost services, workstation port→3000, ttyd→wetty)
+    - Fixed: Telegram commands (removed openwebui example, restart example uses live service)
+    - Fixed: Date 2026-03-08→2026-03-29, TOC renumbered §8→§24
+    - Zero remaining stale references to removed services
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+ SETUP-GUIDE.html | 329 ++++++++++++++++++++++---------------------------------
+ 1 file changed, 133 insertions(+), 196 deletions(-)
+
+commit 618607686f211d5cfb6304c1e0c7944cdde70d07
+Author: Parth Dhanani <parthdhanani@Parths-MacBook-Air.local>
+Date:   Sun Mar 29 06:55:20 2026 +0530
+
+    fix: audit fixes — dynamic container count, stale docs, backup gaps, Kopia auth
+    
+    - deploy.sh: EXPECTED count now dynamic (docker compose config --services) instead of hardcoded 22
+    - deploy.sh: security reminder printed after container status (Vaultwarden/Forgejo signup window)
+    - .env.example: replace real bank PDF password (DOB) with placeholder
+    - setup-env.sh: remove stale SearXNG reference from Redis comment
+    - cloud-init.yaml: dirs updated — removed searxng/openwebui, added moodle-uploads/miniflux/actualbudget/workstation/vault
+    - backup.sh: added TRAX LRS storage backup + Kopia config backup (needed to reconnect to B2 after rebuild)
+    - docker-compose.yml: Kopia command now passes --server-control-username/password (auth enforced)
+    - .claude/CLAUDE.md: fully rewritten to match actual 18-service setup (removed ghost services, correct ports, accurate cron notes)
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+ .claude/CLAUDE.md         | 45 +++++++++++++++---------------
+ .claudeignore             | 70 +++++++++++++++++++++++++++++++++++++++++++++++
+ .env.example              |  2 +-
+ docker-compose.yml        |  2 +-
+ scripts/backup.sh         | 14 ++++++++++
+ scripts/deploy.sh         |  9 +++++-
+ scripts/setup-env.sh      |  2 +-
+ terraform/cloud-init.yaml |  2 +-
+ 8 files changed, 118 insertions(+), 28 deletions(-)
+
+commit 0d15f0f506584187f3004ccc2f7d01170dd6fda8
+Author: Parth Dhanani <parthdhanani@Parths-MacBook-Air.local>
+Date:   Sun Mar 29 06:38:22 2026 +0530
+
+    fix: remove 4 optional services, harden Redis auth, align all maintenance scripts
+    
+    Removed: openwebui, searxng, stirling-pdf, jwbot (18 services remain)
+    Security: Redis --requirepass + healthcheck fix, ActualBudget chown 1000:1000
+    Security: EXEC:1 in socket-proxy, Forgejo registration default false
+    Security: AdGuard ratelimit 1000, allowed_clients locked to internal subnets
+    Health: workstation port 7681 → 3000 (wetty), Redis healthcheck NOAUTH fix
+    Cleanup: .env.example - stale SEARXNG/OPENWEBUI vars removed, REDIS_PASSWORD added
+    Backup: removed openwebui block, added SCORM script + monthly vault bundle
+    All scripts verified zero references to removed services
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+ .env.example               |  21 +++++----
+ docker-compose.yml         | 113 +--------------------------------------------
+ scripts/backup.sh          |   7 ---
+ scripts/bootstrap.sh       |   2 +-
+ scripts/deploy.sh          |  33 +++----------
+ scripts/disable-signups.sh |  13 +-----
+ scripts/health-check.sh    |   6 +--
+ scripts/setup-env.sh       |  25 ++--------
+ scripts/update.sh          |   6 +--
+ 9 files changed, 29 insertions(+), 197 deletions(-)
+
+commit 9f1db8b431014f3c2ca64e336cd76fc60914eb59
+Author: Parth Dhanani <parthdhanani@Parths-MacBook-Air.local>
+Date:   Sat Mar 28 23:01:59 2026 +0530
+
+    fix: Moodle Redis auth (session_redis_auth from REDIS_PASSWORD)
+    
+    Backport from main — Redis now requires password, Moodle sessions
+    need session_redis_auth set or connections will be refused.
+    Optional: only applies if REDIS_PASSWORD env var is set.
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+ dockerfiles/moodle.Dockerfile | 2 ++
+ 1 file changed, 2 insertions(+)
+
+commit 339f6de63a8f02bb93acde64e6ad7ceb99f4b22c
+Author: Parth Dhanani <parthdhanani@Parths-MacBook-Air.local>
+Date:   Sat Mar 28 23:01:35 2026 +0530
+
+    fix: wetty bash mode, Moodle Redis auth, vault transfer, SCORM pipeline
+    
+    - workstation.Dockerfile: wetty --command bash (no sshd needed)
+    - workstation memory: 768M → 1G (Claude Channels needs headroom)
+    - moodle.Dockerfile: add session_redis_auth from REDIS_PASSWORD env
+    - transfer-to-vps.sh: add vault + moodle-uploads dirs, scorm script transfer
+    - deploy.sh: copy scorm-import.php to moodle-uploads on deploy
+    - configs/moodle-scripts/scorm-import.php: PHP CLI SCORM import script
+    - n8n workflow 07-vault-sync: Forgejo push → workstation git pull
+    - n8n workflow 09-scorm-deploy: Forgejo push → download → moodle import → Telegram
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+ configs/moodle-scripts/scorm-import.php    | 155 ++++++++++++++++++++++
+ configs/n8n-workflows/07-vault-sync.json   | 110 ++++++++++++++++
+ configs/n8n-workflows/09-scorm-deploy.json | 202 +++++++++++++++++++++++++++++
+ docker-compose.yml                         |   2 +-
+ dockerfiles/moodle.Dockerfile              |   2 +
+ dockerfiles/workstation.Dockerfile         |   2 +-
+ scripts/deploy.sh                          |   9 +-
+ scripts/transfer-to-vps.sh                 |  19 ++-
+ 8 files changed, 496 insertions(+), 5 deletions(-)
+
+commit 16e71bef60050049da249d6e7c187e3d77d41047
+Author: Parth Dhanani <parthdhanani@Parths-MacBook-Air.local>
+Date:   Sat Mar 28 22:45:37 2026 +0530
+
+    v1: original TTYD workstation baseline (pre-HolyClaude changes)
+    
+    Restored to state before:
+    - HolyClaude/wetty workstation replacement
+    - Redis auth
+    - PKM vault volume
+    - SCORM moodle-uploads volume
+    - socket-proxy EXEC:1
+    - AdGuard hardening
+    - Forgejo registration default change
+    
+    Use this branch to roll back. Switch to main for v2.
+
+ configs/adguard/AdGuardHome.yaml      |  6 ++--
+ docker-compose.yml                    |  6 ++--
+ dockerfiles/workstation-entrypoint.sh | 15 ----------
+ dockerfiles/workstation.Dockerfile    | 53 +++++++++++++----------------------
+ scripts/deploy.sh                     |  2 +-
+ 5 files changed, 26 insertions(+), 56 deletions(-)
+
+commit b831f56c07f325cb4bf3a94cf4e4d72307de035e
+Author: Parth Dhanani <parthdhanani@Parths-MacBook-Air.local>
+Date:   Sat Mar 28 22:44:45 2026 +0530
+
+    v2: HolyClaude workstation, Redis auth, PKM vault, SCORM volumes, security fixes
+    
+    - Replace TTYD with wetty (HolyClaude-style browser terminal)
+    - Add tmux + bun for Claude Channels PKM support
+    - Add vault volume for Obsidian PKM sync via Forgejo
+    - Add moodle-uploads shared volume for SCORM automation
+    - Enable socket-proxy EXEC:1 (required for PKM sync + SCORM import)
+    - Add Redis requirepass across all consumers (moodle, searxng, n8n)
+    - Add PKM_BOT_TOKEN for Claude Channels telegram plugin
+    - ActualBudget: chown 1000:1000 instead of chmod 777
+    - AdGuard: ratelimit 1000, restrict to 172.18/100.64 CIDR
+    - Forgejo: DISABLE_REGISTRATION default true
+    - Workstation port 7681 → 3000, memory 512M → 768M
+    - backup.sh: monthly vault git bundle + SCORM script backup
+    - deploy.sh: vault + moodle-uploads dirs, proper ownership
+
+ .claude/CLAUDE.md                                |  156 ++
+ .claude/settings.local.json                      |   20 +
+ .env.example                                     |  123 ++
+ .gitignore                                       |   38 +
+ README.md                                        |   17 +
+ SETUP-GUIDE.html                                 | 2289 ++++++++++++++++++++++
+ configs/adguard/AdGuardHome.yaml                 |  347 ++++
+ configs/diun/diun.yml                            |   16 +
+ configs/jwbot/app.py                             |  171 ++
+ configs/n8n-workflows/01-diun-intelligence.json  |  119 ++
+ configs/n8n-workflows/02-health-summary.json     |  108 +
+ configs/n8n-workflows/03-storage-monitor.json    |  139 ++
+ configs/n8n-workflows/04-morning-digest.json     |  157 ++
+ configs/n8n-workflows/05-movie-search.json       |  114 ++
+ configs/n8n-workflows/06-bank-statement.json     |  176 ++
+ configs/n8n-workflows/08-weekly-ai-digest.json   |  132 ++
+ configs/n8n-workflows/_archive/diun-updates.json |  214 ++
+ configs/n8n-workflows/backup-status.json         |   61 +
+ configs/n8n-workflows/command-handler.json       |  440 +++++
+ configs/n8n-workflows/health-alert.json          |   61 +
+ configs/nginx/aquasoul.conf                      |   33 +
+ configs/nginx/aquasoul.conf.template             |   33 +
+ configs/nginx/portfolio.conf                     |   39 +
+ configs/nginx/portfolio.conf.template            |   39 +
+ configs/postgres/init-databases.sh               |   36 +
+ configs/searxng/settings.yml                     |   54 +
+ docker-compose.yml                               |  778 ++++++++
+ dockerfiles/jwbot.Dockerfile                     |   17 +
+ dockerfiles/moodle.Dockerfile                    |  264 +++
+ dockerfiles/moodle.Dockerfile.vanilla            |  234 +++
+ dockerfiles/n8n.Dockerfile                       |   22 +
+ dockerfiles/traxlrs.Dockerfile                   |  154 ++
+ dockerfiles/workstation-entrypoint.sh            |   15 +
+ dockerfiles/workstation.Dockerfile               |   72 +
+ scripts/backup.sh                                |  150 ++
+ scripts/bootstrap.sh                             |  397 ++++
+ scripts/cryptex.sh                               |  140 ++
+ scripts/deploy.sh                                | 1009 ++++++++++
+ scripts/disable-signups.sh                       |   51 +
+ scripts/generate-profiles.sh                     |  143 ++
+ scripts/health-check.sh                          |  163 ++
+ scripts/restore-env.sh                           |   27 +
+ scripts/setup-env.sh                             |  432 ++++
+ scripts/setup-terraform.sh                       |  278 +++
+ scripts/transfer-to-vps.sh                       |  141 ++
+ scripts/update-adguard.sh                        |  109 ++
+ scripts/update.sh                                |  102 +
+ terraform/cloud-init.yaml                        |  279 +++
+ terraform/main.tf                                |   49 +
+ terraform/network.tf                             |  117 ++
+ terraform/outputs.tf                             |   51 +
+ terraform/provider.tf                            |   18 +
+ terraform/terraform.tfvars.example               |   29 +
+ terraform/variables.tf                           |   99 +
+ 54 files changed, 10472 insertions(+)

@@ -1,0 +1,347 @@
+# AdGuard Home — Optimized config for CRYPTEX
+# Deployed to /opt/cryptex/data/adguard/conf/ on first run only
+# After first run, AdGuard manages this file via admin UI
+#
+# Architecture:
+#   Tailscale devices → 172.18.0.12:53 (plain DNS)
+#   Apple DoH profiles → CF Tunnel → dns.DOMAIN → :80/dns-query (unencrypted DoH)
+#   CF Tunnel terminates TLS — AdGuard serves DoH over plain HTTP
+#
+# Upstream: Quad9 (privacy-focused, DNSSEC, non-profit)
+# No Unbound needed — Quad9 handles DNSSEC validation, recursive resolution
+# VPS is in Oracle datacenter — no ISP to snoop, plain DNS upstream is fine
+
+http:
+  pprof:
+    port: 6060
+    enabled: false
+  address: 0.0.0.0:80
+  session_ttl: 720h
+
+# Empty = setup wizard on first visit (set admin password there)
+users: []
+
+auth_attempts: 5
+block_auth_min: 15
+http_proxy: ""
+language: ""
+theme: auto
+
+dns:
+  bind_hosts:
+    - 0.0.0.0
+  port: 53
+  # false = see which Tailscale device is making queries (useful for debugging)
+  anonymize_client_ip: false
+  # 0 = disabled (only Tailscale-connected devices can reach this, all trusted)
+  ratelimit: 1000
+  ratelimit_subnet_len_ipv4: 24
+  ratelimit_subnet_len_ipv6: 56
+  ratelimit_whitelist: []
+  # Block ANY queries (DDoS amplification prevention)
+  refuse_any: true
+  # Quad9: privacy-focused, DNSSEC-validating, non-profit
+  # Plain DNS (not DoH) — VPS is in Oracle datacenter, no ISP snooping risk
+  upstream_dns:
+    - 9.9.9.9
+    - 149.112.112.112
+  upstream_dns_file: ""
+  bootstrap_dns:
+    - 9.9.9.9
+    - 149.112.112.112
+  fallback_dns:
+    - 9.9.9.9
+    - 149.112.112.112
+  # Parallel = query all upstreams simultaneously, use fastest response
+  upstream_mode: parallel
+  fastest_timeout: 1s
+  allowed_clients:
+    - 172.18.0.0/16
+    - 100.64.0.0/10
+  disallowed_clients: []
+  blocked_hosts:
+    - version.bind
+    - id.server
+    - hostname.bind
+  trusted_proxies:
+    - 127.0.0.0/8
+    - ::1/128
+    # n8n container (for health checks)
+    - 172.18.0.8/32
+  # Cache: 8MB (doubled from default for faster resolution)
+  cache_enabled: true
+  cache_size: 8388608
+  cache_ttl_min: 0
+  cache_ttl_max: 0
+  # Optimistic cache: serve stale while refreshing in background
+  cache_optimistic: true
+  bogus_nxdomain: []
+  aaaa_disabled: false
+  # DNSSEC validation (Quad9 also validates, this is defense in depth)
+  enable_dnssec: true
+  edns_client_subnet:
+    custom_ip: ""
+    enabled: false
+    use_custom: false
+  max_goroutines: 300
+  handle_ddr: true
+  ipset: []
+  ipset_file: ""
+  # IPv6 disabled on VPS
+  bootstrap_prefer_ipv6: false
+  upstream_timeout: 10s
+  private_networks: []
+  use_private_ptr_resolvers: false
+  local_ptr_upstreams: []
+  use_dns64: false
+  dns64_prefixes: []
+  serve_http3: false
+  use_http3_upstreams: false
+  serve_plain_dns: true
+  hostsfile_enabled: true
+  pending_requests:
+    enabled: true
+
+tls:
+  # TLS disabled — Cloudflare Tunnel handles TLS termination
+  enabled: false
+  server_name: ""
+  force_https: false
+  port_https: 0
+  port_dns_over_tls: 0
+  port_dns_over_quic: 0
+  port_dnscrypt: 0
+  dnscrypt_config_file: ""
+  # Critical: allows DoH over plain HTTP (CF Tunnel → AdGuard)
+  allow_unencrypted_doh: true
+  certificate_chain: ""
+  private_key: ""
+  certificate_path: ""
+  private_key_path: ""
+  strict_sni_check: false
+
+querylog:
+  dir_path: ""
+  ignored: []
+  # 7 days (saves disk on ARM VPS, enough for troubleshooting)
+  interval: 168h
+  size_memory: 1000
+  enabled: true
+  file_enabled: true
+
+statistics:
+  dir_path: ""
+  ignored: []
+  interval: 168h
+  enabled: true
+
+# ── Filter Lists ──
+# Hagezi Pro++ = comprehensive blocklist (750k+ rules)
+# NRD 14-day = blocks newly registered domains (phishing/malware)
+# CNAME cloaking = blocks tracker CNAME redirects
+# TIF Medium = threat intelligence feeds
+# Referral + URL shortener whitelists prevent overblocking
+filters:
+  - enabled: true
+    url: https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/pro.plus.txt
+    name: Hagezi Pro++
+    id: 1761147466
+  - enabled: true
+    url: https://small.oisd.nl/
+    name: OISD Small
+    id: 1761147467
+  - enabled: true
+    url: https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/nrd14-8.txt
+    name: Hagezi NRD 14-Day
+    id: 1761147471
+  - enabled: true
+    url: https://raw.githubusercontent.com/nextdns/cname-cloaking-blocklist/master/domains
+    name: NextDNS CNAME Cloaking
+    id: 1761147472
+  - enabled: true
+    url: https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/tif.medium.txt
+    name: HaGeZi TIF Medium
+    id: 1761147476
+  - enabled: true
+    url: https://adguardteam.github.io/AdGuardFilters/MobileFilter/sections/adservers.txt
+    name: AdGuard Mobile Ads
+    id: 1761654077
+
+whitelist_filters:
+  - enabled: true
+    url: https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/whitelist-referral.txt
+    name: HaGeZi Referral Whitelist
+    id: 1761147474
+  - enabled: true
+    url: https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/whitelist-urlshortener.txt
+    name: HaGeZi URL Shortener Whitelist
+    id: 1761147475
+
+# ── Custom Rules ──
+# Platform telemetry blocking (Windows, Apple, Google, Amazon, Samsung, Xiaomi)
+# Advertising/tracking networks
+# YouTube Shorts partial blocking
+user_rules:
+  - '# =========================================='
+  - '# WHITELISTED (do not block)'
+  - '# =========================================='
+  - '@@||mask.icloud.com'
+  - '@@||mask-h2.icloud.com'
+  - '# =========================================='
+  - '# WINDOWS TELEMETRY'
+  - '# =========================================='
+  - '||telemetry.microsoft.com^$important'
+  - '||vortex.data.microsoft.com^$important'
+  - '||watson.telemetry.microsoft.com^$important'
+  - '||settings-win.data.microsoft.com^$important'
+  - '||v10.events.data.microsoft.com^$important'
+  - '||v20.events.data.microsoft.com^$important'
+  - '||telecommand.telemetry.microsoft.com^$important'
+  - '||oca.telemetry.microsoft.com^$important'
+  - '# =========================================='
+  - '# APPLE TELEMETRY'
+  - '# =========================================='
+  - '||metrics.apple.com^$important'
+  - '||xp.apple.com^$important'
+  - '||diagassets.apple.com^$important'
+  - '||iadsdk.apple.com^$important'
+  - '||metrics.icloud.com^$important'
+  - '# =========================================='
+  - '# GOOGLE TELEMETRY'
+  - '# =========================================='
+  - '||play.googleapis.com/log^$important'
+  - '||clientservices.googleapis.com^$important'
+  - '||firebaselogging.googleapis.com^$important'
+  - '# =========================================='
+  - '# AMAZON/ALEXA TELEMETRY'
+  - '# =========================================='
+  - '||device-metrics-us.amazon.com^$important'
+  - '||device-metrics-us-2.amazon.com^$important'
+  - '||unagi-na.amazon.com^$important'
+  - '||msh.amazon.com^$important'
+  - '# =========================================='
+  - '# ADVERTISING & TRACKING'
+  - '# =========================================='
+  - '||adservice.google.*^$important'
+  - '||imasdk.googleapis.com^$important'
+  - '||amazon-adsystem.com^$important'
+  - '||adsterra.com^$important'
+  - '||amplitude.com^$important'
+  - '||analytics.edgekey.net^$important'
+  - '||analytics.twitter.com^$important'
+  - '||app.adjust.*^$important'
+  - '||app.appsflyer.com^$important'
+  - '||doubleclick.net^$important'
+  - '||googleadservices.com^$important'
+  - '||metric.gstatic.com^$important'
+  - '||statcounter.com^$important'
+  - '||googlesyndication.com^$important'
+  - '||adssettings.google.com^$important'
+  - '# =========================================='
+  - '# FACEBOOK/META TRACKING'
+  - '# =========================================='
+  - '||graph.facebook.com^$important'
+  - '||an.facebook.com^$important'
+  - '||pixel.facebook.com^$important'
+  - '||connect.facebook.net^$important'
+  - '# =========================================='
+  - '# SAMSUNG TELEMETRY'
+  - '# =========================================='
+  - '||samsungads.com^$important'
+  - '||smetrics.samsung.com^$important'
+  - '||config.samsungads.com^$important'
+  - '# =========================================='
+  - '# XIAOMI TELEMETRY'
+  - '# =========================================='
+  - '||tracking.miui.com^$important'
+  - '||data.mistat.xiaomi.com^$important'
+  - '||sdkconfig.ad.xiaomi.com^$important'
+  - '# =========================================='
+  - '# VIDEO AD NETWORKS'
+  - '# =========================================='
+  - '||trafficjunky.net^$important'
+  - '||tjads.net^$important'
+  - '||adsrvtraffic.com^$important'
+  - '||ads.phncdn.com^$important'
+  - '||ads.phprcdn.com^$important'
+  - '||ads.pornhub.com^$important'
+
+dhcp:
+  enabled: false
+  interface_name: ""
+  local_domain_name: lan
+  dhcpv4:
+    gateway_ip: ""
+    subnet_mask: ""
+    range_start: ""
+    range_end: ""
+    lease_duration: 86400
+    icmp_timeout_msec: 1000
+    options: []
+  dhcpv6:
+    range_start: ""
+    lease_duration: 86400
+    ra_slaac_only: false
+    ra_allow_slaac: false
+
+filtering:
+  blocking_ipv4: ""
+  blocking_ipv6: ""
+  blocked_services:
+    schedule:
+      time_zone: UTC
+    ids: []
+  protection_disabled_until: null
+  safe_search:
+    enabled: false
+    bing: true
+    duckduckgo: true
+    ecosia: true
+    google: true
+    pixabay: true
+    yandex: true
+    youtube: true
+  blocking_mode: default
+  parental_block_host: family-block.dns.adguard.com
+  safebrowsing_block_host: standard-block.dns.adguard.com
+  rewrites: []
+  safe_fs_patterns:
+    - /opt/adguardhome/work/userfilters/*
+  safebrowsing_cache_size: 1048576
+  safesearch_cache_size: 1048576
+  parental_cache_size: 1048576
+  cache_time: 30
+  # Check for filter updates every 12 hours (lists update daily, hourly is wasteful)
+  filters_update_interval: 12
+  blocked_response_ttl: 10
+  filtering_enabled: true
+  rewrites_enabled: true
+  parental_enabled: false
+  safebrowsing_enabled: false
+  protection_enabled: true
+
+clients:
+  runtime_sources:
+    whois: true
+    arp: true
+    rdns: true
+    dhcp: true
+    hosts: true
+  persistent: []
+
+log:
+  enabled: true
+  file: ""
+  max_backups: 0
+  max_size: 100
+  max_age: 3
+  compress: false
+  local_time: false
+  verbose: false
+
+os:
+  group: ""
+  user: ""
+  rlimit_nofile: 0
+
+schema_version: 29

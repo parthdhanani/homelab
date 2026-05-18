@@ -1,0 +1,110 @@
+{
+  "name": "PKM Vault Sync (Forgejo → Workstation)",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vault-sync",
+        "responseMode": "onReceived",
+        "responseData": "noData"
+      },
+      "id": "node-webhook-vault",
+      "name": "Forgejo Push Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.body.ref }}",
+              "value2": "refs/heads/main"
+            }
+          ]
+        }
+      },
+      "id": "node-filter-branch",
+      "name": "Only main branch",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "command": "docker exec cryptex-workstation git -C /root/vault pull --rebase 2>&1 || echo 'PULL_FAILED'"
+      },
+      "id": "node-git-pull",
+      "name": "Pull vault on workstation",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [680, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.stdout }}",
+              "operation": "contains",
+              "value2": "PULL_FAILED"
+            }
+          ]
+        }
+      },
+      "id": "node-check-pull",
+      "name": "Pull succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "⚠️ Vault sync failed\n\nForgejo pushed to vault but workstation pull errored.\n\n```\n{{ $json.stdout }}\n```",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "node-tg-fail",
+      "name": "Alert: pull failed",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1120, 100],
+      "credentials": {
+        "telegramApi": {
+          "id": "a0000000-0000-0000-0000-000000000001",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Forgejo Push Webhook": {
+      "main": [[{"node": "Only main branch", "type": "main", "index": 0}]]
+    },
+    "Only main branch": {
+      "main": [
+        [{"node": "Pull vault on workstation", "type": "main", "index": 0}],
+        []
+      ]
+    },
+    "Pull vault on workstation": {
+      "main": [[{"node": "Pull succeeded?", "type": "main", "index": 0}]]
+    },
+    "Pull succeeded?": {
+      "main": [
+        [],
+        [{"node": "Alert: pull failed", "type": "main", "index": 0}]
+      ]
+    }
+  },
+  "settings": {
+    "errorWorkflow": "",
+    "saveManualExecutions": false,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "tags": ["pkm", "vault", "sync"]
+}
