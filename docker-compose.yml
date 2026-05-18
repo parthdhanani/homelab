@@ -522,62 +522,6 @@ services:
       timeout: 5s
       retries: 3
 
-  # ── Woodpecker CI — Self-hosted CI/CD for Forgejo repos ─────────────────────
-  woodpecker-server:
-    <<: *defaults
-    image: woodpeckerci/woodpecker-server:v3.14.0
-    container_name: cryptex-woodpecker-server
-    networks:
-      cryptex_net:
-        ipv4_address: 172.18.0.50
-    volumes:
-      - /opt/cryptex/data/woodpecker:/var/lib/woodpecker
-    environment:
-      WOODPECKER_OPEN: "false"
-      WOODPECKER_GITEA: "true"
-      WOODPECKER_GITEA_URL: "https://git.${DOMAIN}"
-      WOODPECKER_GITEA_CLIENT: "${WOODPECKER_FORGEJO_CLIENT_ID}"
-      WOODPECKER_GITEA_SECRET: "${WOODPECKER_FORGEJO_CLIENT_SECRET}"
-      WOODPECKER_AGENT_SECRET: "${WOODPECKER_AGENT_SECRET}"
-      WOODPECKER_HOST: "https://ci.${DOMAIN}"
-      WOODPECKER_DATABASE_DRIVER: "postgres"
-      WOODPECKER_DATABASE_DATASOURCE: "postgres://${WOODPECKER_DB_USER}:${WOODPECKER_DB_PASSWORD}@cryptex-pgbouncer:5432/woodpecker?sslmode=disable"
-    depends_on:
-      pgbouncer:
-        condition: service_healthy
-      forgejo:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: "0.25"
-    # No healthcheck — distroless image has no shell/wget/nc
-    # Agent uses service_started so it doesn't wait on health status
-
-  woodpecker-agent:
-    <<: *defaults
-    image: woodpeckerci/woodpecker-agent:v3.14.0
-    container_name: cryptex-woodpecker-agent
-    networks:
-      cryptex_net:
-        ipv4_address: 172.18.0.49
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      WOODPECKER_SERVER: "cryptex-woodpecker-server:9000"
-      WOODPECKER_AGENT_SECRET: "${WOODPECKER_AGENT_SECRET}"
-      WOODPECKER_MAX_WORKFLOWS: "2"
-    security_opt:
-      - no-new-privileges=false
-    depends_on:
-      woodpecker-server:
-        condition: service_started
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: "0.50"
 
   # 13. AdGuard Home — DNS filtering
   # Port 53 exposed to host for Tailscale DNS routing
@@ -1040,17 +984,17 @@ services:
 
   # ── [REMOVED] rclone — WebDAV abandoned (CF blocks PROPFIND)
 
-  # ── Alist — Cloud storage aggregator (WebDAV endpoint for all drives) ─────
+  # ── OpenList — Cloud storage aggregator (Alist fork, no telemetry) ─────────
   alist:
     <<: *defaults
-    image: xhofe/alist:v3.60.0
+    image: openlistteam/openlist:v4.2.1
     container_name: cryptex-alist
     networks:
       cryptex_net:
         ipv4_address: 172.18.0.39
     cap_add: [CHOWN, SETUID, SETGID]
     volumes:
-      - /opt/cryptex/data/alist:/opt/alist/data
+      - /opt/cryptex/data/alist:/opt/openlist/data
       - /opt/cryptex/data/pkm:/mnt/pkm:ro
       - /opt/cryptex/data/portfolio:/mnt/portfolio:ro
       - /opt/cryptex/data/aquasoul:/mnt/aquasoul:ro
@@ -1118,7 +1062,7 @@ services:
   # ── IT-Tools — Developer utility collection ──────────────────────────────
   it-tools:
     <<: *defaults
-    image: corentinth/it-tools:latest  # tags use YYYY.MM.DD-<githash> format; Dockhand monitors
+    image: corentinth/it-tools:2024.10.22-7ca5933
     container_name: cryptex-it-tools
     networks:
       cryptex_net:
