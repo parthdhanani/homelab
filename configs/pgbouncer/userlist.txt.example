@@ -1,0 +1,16 @@
+# pgbouncer userlist — template.
+#
+# Real userlist.txt is gitignored (contains plaintext passwords by design — pgbouncer's auth file format).
+# Generate at deploy time from .env via scripts/gen-pgbouncer-userlist.sh
+#
+# Format:  "username" "password"
+#
+"n8n_user"         "<N8N_DB_PASSWORD>"
+"traxlrs_user"     "<TRAXLRS_DB_PASSWORD>"
+"miniflux_user"    "<MINIFLUX_DB_PASSWORD>"
+"forgejo_user"     "<FORGEJO_DB_PASSWORD>"
+"librechat_user"   "<LIBRECHAT_DB_PASSWORD>"
+"moodle_user"      "<MOODLE_DB_PASSWORD>"
+"actualbudget_user" "<ACTUALBUDGET_PASSWORD>"
+"ferretdb_user"    "<FERRETDB_DB_PASSWORD>"
+"ob1_user"         "<OB1_DB_PASSWORD>"
