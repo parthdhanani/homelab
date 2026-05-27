@@ -1,9 +1,0 @@
-c1d5ad1 improve: reliability, observability, maintainability — scoring improvements
-159302e fix: pre-deploy audit — 8 verified bugs fixed
-b12f1f3 docs: major SETUP-GUIDE.html update — align with v2 18-service stack
-6186076 fix: audit fixes — dynamic container count, stale docs, backup gaps, Kopia auth
-0d15f0f fix: remove 4 optional services, harden Redis auth, align all maintenance scripts
-9f1db8b fix: Moodle Redis auth (session_redis_auth from REDIS_PASSWORD)
-339f6de fix: wetty bash mode, Moodle Redis auth, vault transfer, SCORM pipeline
-16e71be v1: original TTYD workstation baseline (pre-HolyClaude changes)
-b831f56 v2: HolyClaude workstation, Redis auth, PKM vault, SCORM volumes, security fixes

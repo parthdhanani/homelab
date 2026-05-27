@@ -30,7 +30,6 @@ if [ -f "${_pgb_conf}/pgbouncer.ini" ]; then
 "${TRAXLRS_DB_USER}" "${TRAXLRS_DB_PASSWORD}"
 "${MINIFLUX_DB_USER:-miniflux_user}" "${MINIFLUX_DB_PASSWORD}"
 "${UMAMI_DB_USER}" "${UMAMI_DB_PASSWORD}"
-"${WOODPECKER_DB_USER}" "${WOODPECKER_DB_PASSWORD}"
 "pgbouncer_admin" "${POSTGRES_PASSWORD}"
 USERLIST
     chmod 644 "${_pgb_conf}/userlist.txt"
