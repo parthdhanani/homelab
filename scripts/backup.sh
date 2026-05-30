@@ -221,13 +221,6 @@ echo "Backup: ${FINAL} ($(du -h "$FINAL" | cut -f1))"
 echo "Cleaning old backups (keeping 7)..."
 ls -t "${BACKUP_DIR}"/cryptex-*.tar.gz 2>/dev/null | tail -n +8 | xargs rm -f 2>/dev/null || true
 
-# Notify n8n (Telegram backup status)
-BACKUP_SIZE=$(du -h "$FINAL" | cut -f1)
-curl -sf --max-time 10 -X POST "http://cryptex-n8n:5678/webhook/backup-status" \
-    -H "Content-Type: application/json" \
-    -d "{\"status\":\"success\",\"file\":\"${FINAL}\",\"size\":\"${BACKUP_SIZE}\",\"timestamp\":\"${TIMESTAMP}\"}" \
-    >/dev/null 2>&1 || true
-
 # ── Kopia snapshot (deduplication + compression + B2 offsite if configured) ──
 # Kopia snapshots the /backups directory (mounted read-only inside the kopia container).
 # If kopia is connected to B2, the snapshot is stored there (encrypted + deduplicated).
