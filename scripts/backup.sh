@@ -60,6 +60,16 @@ if [ ${#_MISSING_DBS[@]} -gt 0 ]; then
 fi
 echo "  postgres_all.sql validated ($(du -h "${BACKUP_PATH}/postgres_all.sql" | cut -f1))"
 
+# OB1 pgvector dump (semantic memory — separate postgres container)
+echo "Backing up OB1 pgvector..."
+if docker inspect cryptex-pgvector >/dev/null 2>&1; then
+    docker exec cryptex-pgvector pg_dump -U ob1 ob1 > "${BACKUP_PATH}/pgvector_ob1.sql" \
+        && echo "  pgvector_ob1.sql ($(du -h "${BACKUP_PATH}/pgvector_ob1.sql" | cut -f1))" \
+        || echo "  (pgvector dump failed — container running but pg_dump errored)"
+else
+    echo "  (pgvector container not found — skipping)"
+fi
+
 # MongoDB dump (LibreChat data — users, conversations, messages)
 echo "Backing up MongoDB..."
 if docker inspect cryptex-ferretdb >/dev/null 2>&1; then
