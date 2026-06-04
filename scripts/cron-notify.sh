@@ -4,7 +4,7 @@
 # Usage in crontab: cron-notify.sh /opt/cryptex/scripts/foo.sh >> /var/log/foo.log 2>&1
 
 SCRIPT="$1"
-TO="parth1707ster@gmail.com"
+TO="${ADMIN_EMAIL:-admin@${DOMAIN:-yourdomain.com}}"
 LABEL=$(basename "${SCRIPT:-unknown}")
 
 output=$("$@" 2>&1)

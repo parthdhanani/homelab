@@ -36,7 +36,7 @@ Generated: $(date)
 | Moodle LMS | https://learn.${DOMAIN} | ${MOODLE_ADMIN_USER:-admin} / ${MOODLE_ADMIN_PASSWORD:-see .env} |
 | n8n Automation | https://n8n.${DOMAIN} | ${N8N_ADMIN_EMAIL:-see .env} / ${N8N_ADMIN_PASSWORD:-see .env} |
 | Kopia Backup | https://backup.${DOMAIN} | ${KOPIA_SERVER_USER:-admin} / ${KOPIA_SERVER_PASSWORD:-${KOPIA_PASSWORD:-see .env}} |
-| OpenWebUI (AI chat) | https://chat.${DOMAIN} | parth1707ster@gmail.com / ${OPENWEBUI_ADMIN_PASSWORD:-not-set} |
+| OpenWebUI (AI chat) | https://chat.${DOMAIN} | ${ADMIN_EMAIL:-admin@${DOMAIN}} / ${OPENWEBUI_ADMIN_PASSWORD:-not-set} |
 | Forgejo Git | https://git.${DOMAIN} | admin (set on first visit) |
 | Tianji Analytics | https://status.${DOMAIN} | email signup on first visit |
 | SearXNG | https://search.${DOMAIN} | no auth (Zero Trust protected) |
@@ -74,7 +74,7 @@ Generated: $(date)
 
 \`\`\`
 ${DOMAIN}                → cryptex-portfolio:80       (public)
-aquasoulstudio.in        → cryptex-portfolio:80       (public)
+your-second-domain.com        → cryptex-portfolio:80       (public)
 learn.${DOMAIN}          → cryptex-moodle:80
 lrs.${DOMAIN}            → cryptex-traxlrs:80
 vault.${DOMAIN}          → cryptex-vaultwarden:80
@@ -94,7 +94,7 @@ pdf.${DOMAIN}            → cryptex-stirling-pdf:8080
 \`\`\`
 
 Zero Trust policies:
-- Public: ${DOMAIN}, aquasoulstudio.in, status.${DOMAIN}
+- Public: ${DOMAIN}, your-second-domain.com, status.${DOMAIN}
 - Bypass: dns.${DOMAIN}/dns-query* (DoH — no browser auth possible)
 - Email auth: everything else → must use ${SMTP_USER:-your-gmail}
 

@@ -115,7 +115,7 @@ prompt TS_AUTHKEY "Tailscale auth key (or 'skip')" "skip"
 
 echo ""
 echo "── AquaSoul Studio (optional second site) ──"
-prompt AQUASOUL_DOMAIN "AquaSoul domain (e.g. aquasoulstudio.in), or press Enter to skip" ""
+prompt AQUASOUL_DOMAIN "Second domain (optional, e.g. your-second-domain.com), or press Enter to skip" ""
 # Validate: if it doesn't contain a dot it's not a domain — treat as skip
 if [[ "$AQUASOUL_DOMAIN" != *.* ]]; then
     AQUASOUL_DOMAIN=""

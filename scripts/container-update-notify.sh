@@ -3,7 +3,7 @@
 # Added to cron by infra-cleanup-2026-05-17
 set +e
 
-TO="parth1707ster@gmail.com"
+TO="${ADMIN_EMAIL:-admin@${DOMAIN:-yourdomain.com}}"
 UPDATES=()
 
 while IFS=' ' read -r CNAME IMAGE; do
@@ -47,7 +47,7 @@ done < <(docker ps --format '{{.Names}} {{.Image}}' 2>/dev/null)
 
 {
     echo "To: $TO"
-    echo "From: parth1707ster@gmail.com"
+    echo "From: ${ADMIN_EMAIL:-admin@${DOMAIN:-yourdomain.com}}"
     echo "Subject: [Cryptex] Container updates available ($(date +%Y-%m-%d))"
     echo "Content-Type: text/plain"
     echo ""
@@ -55,7 +55,7 @@ done < <(docker ps --format '{{.Names}} {{.Image}}' 2>/dev/null)
     echo ""
     printf '%s\n' "${UPDATES[@]}"
     echo ""
-    echo "Review at https://docker.psidex.com"
+    echo "Review at https://docker.${DOMAIN:-yourdomain.com}"
     echo "Run update: bash /opt/cryptex/update.sh"
 } | msmtp "$TO" 2>/dev/null
 

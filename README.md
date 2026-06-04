@@ -44,27 +44,27 @@ See [`bootstrap/README.md`](bootstrap/README.md) for the phase-by-phase referenc
 
 Public surface — all behind Cloudflare Tunnel, no open ports:
 
-| Domain | Service |
+| Domain pattern | Service |
 |---|---|
-| `psidex.com` | Portfolio (static) |
-| `vault.psidex.com` | Vaultwarden |
-| `git.psidex.com` | Forgejo |
-| `chat.psidex.com` | LibreChat |
-| `n8n.psidex.com` | n8n |
-| `lms.psidex.com` | Moodle + TRAX LRS |
-| `files.psidex.com` | OpenList (file browser → multi-cloud) |
-| `budget.psidex.com` | Actual Budget |
-| `read.psidex.com` | Miniflux |
-| `notes.psidex.com` | MkDocs (PKM published) |
-| `s.psidex.com` | Shlink (URL shortener) |
-| `analytics.psidex.com` | Umami |
-| `id.psidex.com` | PocketID (OIDC) |
-| `status.psidex.com` | Uptime Kuma |
-| `tools.psidex.com` | IT-Tools |
-| `search.psidex.com` | SearXNG |
-| `pdf.psidex.com` | Stirling-PDF |
-| `dns.psidex.com` | AdGuard Home (LAN-only via Tailscale) |
-| `aqua.psidex.com` | AquaSoul (secondary site, route pending) |
+| `yourdomain.com` | Portfolio (static nginx) |
+| `vault.yourdomain.com` | Vaultwarden (password manager) |
+| `git.yourdomain.com` | Forgejo (git forge) |
+| `chat.yourdomain.com` | LibreChat (AI frontend) |
+| `n8n.yourdomain.com` | n8n (automation) |
+| `learn.yourdomain.com` | Moodle LMS |
+| `lrs.yourdomain.com` | TRAX xAPI LRS |
+| `files.yourdomain.com` | Alist (cloud file browser) |
+| `money.yourdomain.com` | ActualBudget |
+| `news.yourdomain.com` | Miniflux (RSS) |
+| `notes.yourdomain.com` | MkDocs (PKM published) |
+| `go.yourdomain.com` | Shlink (URL shortener) |
+| `analytics.yourdomain.com` | Umami |
+| `id.yourdomain.com` | PocketID (OIDC provider) |
+| `status.yourdomain.com` | Uptime Kuma |
+| `tools.yourdomain.com` | IT-Tools |
+| `search.yourdomain.com` | SearXNG |
+| `pdf.yourdomain.com` | Stirling-PDF |
+| `dns.yourdomain.com` | AdGuard Home (DoH + admin UI) |
 
 Internal:
 
@@ -134,6 +134,29 @@ cat system/cron/root.crontab
 
 A deploy script gets you a running stack once. This kit makes the entire VPS — system layer + container stack + user tooling — **reproducible**: identical state on a fresh machine, no tribal knowledge. The goal is **zero-effort rebuild** the next time Oracle reclaims your instance, you migrate clouds, or you need to clone for staging.
 
+## Security posture
+
+- SSH: key-only auth, `PermitRootLogin no`, `MaxAuthTries 3`, Tailscale-interface bound
+- fail2ban: sshd + recidive jails, `maxretry 2`, 24h ban
+- iptables: default DROP policy, Oracle Security List + OS-level
+- Docker socket: Tecnativa socket-proxy only (EXEC=0, START=0, STOP=0)
+- All secrets in `.env` (gitignored) — `secrets.env.template` documents every variable
+- CF Zero Trust Access on all internal subdomains — public portfolio + status page exempt
+
+## Backup and recovery
+
+Daily at 03:00 UTC:
+1. `pg_dumpall` (validates all expected databases are present before proceeding)
+2. OB1 pgvector dump, FerretDB dump, Vaultwarden SQLite `.backup`
+3. n8n config + workflow export, Moodle uploads, PKM vault, Forgejo repos
+4. Kopia snapshot of `/backups` → Backblaze B2 (encrypted, deduplicated)
+
+Weekly Saturday: 10% sample verify against B2.
+
+Restore from scratch: `./bootstrap/restore.sh cryptex.key` on a blank VPS.
+
+RPO: 24h. RTO: ~30 minutes.
+
 ## License
 
-Private repo. Not for redistribution.
+MIT — see `LICENSE`.
