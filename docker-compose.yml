@@ -125,7 +125,7 @@ services:
   # 3. Cloudflared — Cloudflare Tunnel (outbound only)
   cloudflared:
     <<: *defaults
-    image: cloudflare/cloudflared:2026.3.0
+    image: cloudflare/cloudflared:2026.5.2
     container_name: cryptex-cloudflared
     networks:
       cryptex_net:
@@ -239,7 +239,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1536M
+          memory: 2560M
           cpus: "0.75"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]

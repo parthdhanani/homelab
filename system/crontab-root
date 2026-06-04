@@ -1,0 +1,20 @@
+# CRYPTEX-MANAGED-START
+# Health check + watchdog every 5 minutes
+*/5 * * * * /opt/cryptex/scripts/health-check-cron.sh; /opt/cryptex/scripts/watchdog.sh 2>&1
+# Notes build every 15 minutes — change-aware, skips if vault unchanged
+*/15 * * * * /opt/cryptex/scripts/notes-build.sh >> /var/log/cryptex-notes.log 2>&1
+# Daily backup at 3:00 AM UTC
+0 3 * * * /opt/cryptex/scripts/backup.sh >> /var/log/cryptex-backup.log 2>&1
+# Weekly Docker cleanup (Sunday 4:00 AM UTC) — targeted prune preserves rollback images
+0 4 * * 0 { docker container prune -f; docker network prune -f; docker image prune -f; docker volume prune -f --filter label!=cryptex; } >> /var/log/cryptex-prune.log 2>&1
+# Weekly auto-update (Sunday 5:00 AM UTC)
+0 5 * * 0 /opt/cryptex/scripts/update.sh >> /var/log/cryptex-update.log 2>&1
+# Weekly backup verification (every Saturday 4:00 AM UTC)
+0 4 * * 6 /opt/cryptex/scripts/backup-verify.sh >> /var/log/cryptex-backup-verify.log 2>&1
+# Moodle cron every minute (flock prevents parallel execution)
+* * * * * flock -n /var/lock/moodle-cron.lock docker exec cryptex-moodle php /var/www/html/admin/cli/cron.php 2>>/var/log/cryptex-moodle-cron.log 1>/dev/null
+# Daily report + OB1 summary at 6:00 AM UTC
+0 6 * * * /opt/cryptex/scripts/cron-notify.sh /opt/cryptex/scripts/daily-report.sh >> /var/log/cryptex-daily-report.log 2>&1
+# Container image update check daily at 9:07 AM UTC
+7 9 * * * /opt/cryptex/scripts/cron-notify.sh /opt/cryptex/scripts/container-update-notify.sh >> /var/log/cryptex-updates.log 2>&1
+# CRYPTEX-MANAGED-END

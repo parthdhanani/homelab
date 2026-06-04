@@ -30,7 +30,7 @@ if [ -z "$SNAP_ID" ]; then
     exit 1
 fi
 
-echo "Verifying snapshot ${SNAP_ID}..."
+echo "Verifying snapshot ${SNAP_ID} (10% sample — weekly run)..."
 docker exec cryptex-kopia kopia snapshot verify --verify-files-percent=10 "${SNAP_ID}" 2>&1 \
     && echo "Verification: PASS" \
     || { echo "Verification: FAIL"; exit 1; }

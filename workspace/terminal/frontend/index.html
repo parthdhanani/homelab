@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
+  <title>Cryptex Terminal</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d1117;
+      color: #e6edf3;
+      font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #statusbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 12px;
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      font-size: 11px;
+      color: #8b949e;
+      flex-shrink: 0;
+      user-select: none;
+    }
+    #statusbar .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #3fb950;
+      display: inline-block;
+      margin-right: 6px;
+      box-shadow: 0 0 6px #3fb95088;
+    }
+    #statusbar .dot.disconnected { background: #f85149; box-shadow: 0 0 6px #f8514988; }
+    #statusbar .right { display: flex; gap: 12px; }
+
+    #terminal-wrapper {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+    #terminal {
+      width: 100%;
+      height: 100%;
+    }
+    /* ghostty-web canvas — allow touch scroll passthrough */
+    #terminal canvas {
+      touch-action: none;
+    }
+
+    /* Mobile toolbar */
+    #mobile-toolbar {
+      display: none;
+      flex-shrink: 0;
+      background: #161b22;
+      border-top: 1px solid #30363d;
+      overflow-x: auto;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      padding: 4px 6px;
+    }
+    #mobile-toolbar::-webkit-scrollbar { display: none; }
+    .toolbar-row {
+      display: flex;
+      gap: 4px;
+      min-width: max-content;
+    }
+    .tk {
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      font-family: inherit;
+      font-size: 12px;
+      padding: 6px 10px;
+      cursor: pointer;
+      white-space: nowrap;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+    }
+    .tk:active { background: #388bfd33; border-color: #388bfd; color: #e6edf3; }
+    .tk.mod { background: #1f2d1f; border-color: #3fb95066; color: #3fb950; }
+    .tk.mod:active { background: #3fb95033; }
+    .tk.danger { background: #2d1f1f; border-color: #f8514966; color: #f85149; }
+    .tk.confirm { background: #1f2d1f; border-color: #3fb95099; color: #3fb950; font-weight: 700; }
+    .tk.enter { background: #1a2433; border-color: #388bfd88; color: #79c0ff; font-weight: 700; }
+
+    /* Show toolbar only on touch devices */
+    @media (hover: none) and (pointer: coarse) {
+      #mobile-toolbar { display: block; }
+    }
+    /* Also show on narrow screens regardless of touch */
+    @media (max-width: 768px) {
+      #mobile-toolbar { display: block; }
+      #statusbar { font-size: 10px; padding: 3px 8px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="statusbar">
+    <span><span class="dot disconnected" id="dot"></span><span id="status">Connecting…</span></span>
+    <span class="right">
+      <span id="session-label">zellij</span>
+      <span id="size-label">—</span>
+    </span>
+  </div>
+
+  <div id="terminal-wrapper">
+    <div id="terminal"></div>
+  </div>
+
+  <div id="mobile-toolbar">
+    <div class="toolbar-row">
+      <button class="tk enter" data-send="enter">⏎</button>
+      <button class="tk confirm" data-send="1-enter">1 ↵</button>
+      <button class="tk" data-send="2-enter" style="background:#1a2233;border-color:#bc8cff66;color:#bc8cff;">2 ↵</button>
+      <button class="tk danger" data-send="3-enter">3 ↵</button>
+      <button class="tk confirm" data-send="y-enter">y ↵</button>
+      <button class="tk danger" data-send="n-enter">n ↵</button>
+      <button class="tk mod" data-send="ctrl-c">^C</button>
+      <button class="tk mod" data-send="ctrl-z">^Z</button>
+      <button class="tk mod" data-send="ctrl-d">^D</button>
+      <button class="tk" data-send="esc">Esc</button>
+      <button class="tk" data-send="tab">Tab</button>
+      <button class="tk" data-send="up">↑</button>
+      <button class="tk" data-send="down">↓</button>
+      <button class="tk" data-send="left">←</button>
+      <button class="tk" data-send="right">→</button>
+      <button class="tk" data-literal="|">|</button>
+      <button class="tk" data-literal="~">~</button>
+      <button class="tk" data-literal="/">/ </button>
+      <button class="tk" data-literal="#">#</button>
+      <button class="tk" data-literal="$">$</button>
+      <button class="tk" data-literal=" - "> - </button>
+      <button class="tk" data-literal="--">--</button>
+      <button class="tk mod" data-send="ctrl-a">^A</button>
+      <button class="tk mod" data-send="ctrl-e">^E</button>
+      <button class="tk mod" data-send="ctrl-l">^L</button>
+      <button class="tk danger" data-send="ctrl-c">kill</button>
+    </div>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

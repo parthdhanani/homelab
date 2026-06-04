@@ -1,0 +1,67 @@
+[
+  {
+    "name": "zellij",
+    "repo": "zellij-org/zellij",
+    "asset_pattern": "aarch64-unknown-linux-musl.tar.gz",
+    "binary_in_archive": "zellij",
+    "install_path": "/usr/local/bin/zellij",
+    "version_cmd": "zellij --version",
+    "version_strip": "zellij ",
+    "note": "may be hosting current session — binary swap applies on next launch"
+  },
+  {
+    "name": "starship",
+    "repo": "starship-rs/starship",
+    "asset_pattern": "aarch64-unknown-linux-musl.tar.gz",
+    "binary_in_archive": "starship",
+    "install_path": "/usr/local/bin/starship",
+    "version_cmd": "starship --version",
+    "version_strip": "starship "
+  },
+  {
+    "name": "tv",
+    "repo": "alexpasmantier/television",
+    "asset_pattern": "aarch64-unknown-linux-gnu.tar.gz",
+    "binary_in_archive": "tv",
+    "install_path": "/usr/local/bin/tv",
+    "version_cmd": "tv --version",
+    "version_strip": "television "
+  },
+  {
+    "name": "ya",
+    "repo": "sxyazi/yazi",
+    "asset_pattern": "yazi-aarch64-unknown-linux-musl.zip",
+    "binary_in_archive": "yazi-aarch64-unknown-linux-musl/ya",
+    "install_path": "/usr/local/bin/ya",
+    "version_cmd": "ya --version",
+    "version_strip": "Ya "
+  },
+  {
+    "name": "wstunnel",
+    "repo": "erebe/wstunnel",
+    "asset_pattern": "wstunnel_linux_aarch64.tar.gz",
+    "binary_in_archive": "wstunnel",
+    "install_path": "/usr/local/bin/wstunnel",
+    "version_cmd": "wstunnel --version",
+    "version_strip": "wstunnel-cli "
+  },
+  {
+    "name": "mutagen",
+    "repo": "mutagen-io/mutagen",
+    "asset_pattern": "mutagen_linux_arm64_v",
+    "binary_in_archive": "mutagen",
+    "install_path": "/usr/local/bin/mutagen",
+    "version_cmd": "mutagen version",
+    "version_strip": "Mutagen version ",
+    "note": "load-bearing daemon — only CLI binary is swapped, never stop the daemon"
+  },
+  {
+    "name": "bumblebee",
+    "repo": "perplexityai/bumblebee",
+    "asset_pattern": "bumblebee_.*_linux_arm64.tar.gz",
+    "binary_in_archive": "bumblebee",
+    "install_path": "/usr/local/bin/bumblebee",
+    "version_cmd": "bumblebee --version",
+    "version_strip": "bumblebee v"
+  }
+]

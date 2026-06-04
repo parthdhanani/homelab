@@ -1,3 +1,8 @@
+# ---- Analysis / tooling artifacts ----
+.understand-anything/
+workspace/terminal/node_modules/
+workspace/terminal/dist/
+
 # ---- Secrets (NEVER commit) ----
 secrets.env
 .env
