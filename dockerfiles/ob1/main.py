@@ -246,6 +246,19 @@ async def lifespan(app: FastAPI):
 
 api = FastAPI(lifespan=lifespan)
 
+# Bearer-token auth on /api/* — /health stays open for healthchecks/monitoring.
+# If OB1_API_KEY is unset, auth is disabled (graceful rollout / local dev).
+API_KEY = os.environ.get("OB1_API_KEY", "").strip()
+
+
+def _check_auth(request: Request):
+    if not API_KEY:
+        return None
+    auth = request.headers.get("authorization", "")
+    if auth == f"Bearer {API_KEY}":
+        return None
+    return JSONResponse({"detail": "unauthorized"}, status_code=401)
+
 
 @api.get("/health")
 def health():
@@ -258,6 +271,9 @@ def health():
 
 @api.post("/api/remember")
 async def api_remember(request: Request):
+    denied = _check_auth(request)
+    if denied:
+        return denied
     body = await request.json()
     result = _remember(
         body.get("content", ""),
@@ -269,7 +285,10 @@ async def api_remember(request: Request):
 
 
 @api.get("/api/search")
-def api_search(q: str = Query(...), k: int = Query(5)):
+def api_search(request: Request, q: str = Query(...), k: int = Query(5)):
+    denied = _check_auth(request)
+    if denied:
+        return denied
     results = _search(q, k)
     return {"results": results}
 

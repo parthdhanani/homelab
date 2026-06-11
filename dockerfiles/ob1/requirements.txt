@@ -3,5 +3,5 @@ uvicorn[standard]==0.32.0
 fastembed==0.4.1
 psycopg2-binary==2.9.9
 pgvector==0.3.6
-mcp>=1.0.0
+mcp==1.27.2
 httpx==0.28.0

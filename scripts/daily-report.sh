@@ -126,10 +126,38 @@ else
     SUMMARY="VPS daily check ${DATE}: NEEDS_ATTENTION. Issues: ${ISSUE_LIST}. Services: ${HC_PASS} OK, ${HC_WARN} warn, ${HC_FAIL} fail."
 fi
 
+OB1_TOKEN=$(cat /home/ubuntu/.claude/secrets/ob1.token 2>/dev/null)
 curl -sf --max-time 5 -X POST "${OB1}/api/remember" \
     -H "Content-Type: application/json" \
+    ${OB1_TOKEN:+-H "Authorization: Bearer $OB1_TOKEN"} \
     -d "{\"content\": \"${SUMMARY}\", \"source\": \"daily-report\", \"tags\": [\"vps\", \"health\", \"automated\"]}" \
     >/dev/null 2>&1 || true
+
+# ── Graphify summary → OB1 (so the code graph is semantically findable) ──────
+GRAPH=/opt/cryptex/graphify-out/graph.json
+if [ -f "$GRAPH" ]; then
+    G_SUMMARY=$(python3 -c "
+import json
+g = json.load(open('$GRAPH'))
+nodes, edges = g.get('nodes', []), g.get('edges', [])
+kinds = {}
+for n in nodes:
+    k = n.get('type') or n.get('kind') or '?'
+    kinds[k] = kinds.get(k, 0) + 1
+top = ', '.join(f'{k}:{v}' for k, v in sorted(kinds.items(), key=lambda x: -x[1])[:6])
+print(f'Cryptex container knowledge graph (graphify): {len(nodes)} nodes, {len(edges)} edges. Node types: {top}. Query: /graphify query. Canonical: /opt/cryptex/graphify-out/graph.json')
+" 2>/dev/null)
+    # change-aware: only ingest when the graph differs from last ingest
+    G_HASH=$(printf '%s' "$G_SUMMARY" | md5sum | cut -d' ' -f1)
+    G_LAST=$(cat /opt/cryptex/graphify-out/.ob1-last-hash 2>/dev/null)
+    [ "$G_HASH" = "$G_LAST" ] && G_SUMMARY=""
+    [ -n "$G_SUMMARY" ] && echo "$G_HASH" > /opt/cryptex/graphify-out/.ob1-last-hash
+    [ -n "$G_SUMMARY" ] && curl -sf --max-time 5 -X POST "${OB1}/api/remember" \
+        -H "Content-Type: application/json" \
+        ${OB1_TOKEN:+-H "Authorization: Bearer $OB1_TOKEN"} \
+        -d "{\"content\": \"${G_SUMMARY}\", \"source\": \"graphify\", \"tags\": [\"graphify\", \"infrastructure\", \"automated\"]}" \
+        >/dev/null 2>&1 || true
+fi
 
 # ── Log outcome ───────────────────────────────────────────────────────────────
 echo "${TS} [${VERDICT}] hc=${HC_PASS}ok/${HC_WARN}warn/${HC_FAIL}fail disk=${DISK_PCT}% mem_free=${MEM_FREE}MB containers=${TOTAL}" \

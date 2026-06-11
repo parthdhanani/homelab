@@ -1,0 +1,25 @@
+[Unit]
+Description=SB Translation Tool
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/AI_Space/sb_tool
+ExecStart=/home/ubuntu/.local/bin/gunicorn app:app \
+  --workers 4 \
+  --worker-class gthread \
+  --threads 2 \
+  --bind 0.0.0.0:5050 \
+  --timeout 120 \
+  --keep-alive 5 \
+  --max-requests 500 \
+  --max-requests-jitter 50 \
+  --access-logfile /var/log/sb-tool-access.log \
+  --error-logfile /var/log/sb-tool-error.log \
+  --log-level info
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

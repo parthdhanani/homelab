@@ -4,6 +4,7 @@ After=zellij-web.service
 Requires=zellij-web.service
 
 [Service]
+User=ubuntu
 Type=simple
 ExecStart=/usr/bin/socat TCP-LISTEN:8082,bind=172.18.0.1,fork,reuseaddr TCP:127.0.0.1:8082
 Restart=on-failure

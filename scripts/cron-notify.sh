@@ -3,6 +3,9 @@
 # Thin wrapper: runs a script, emails on non-zero exit via msmtp.
 # Usage in crontab: cron-notify.sh /opt/cryptex/scripts/foo.sh >> /var/log/foo.log 2>&1
 
+# cron has a bare env — pull ADMIN_EMAIL/DOMAIN from the stack .env
+source /opt/cryptex/.env 2>/dev/null || true
+
 SCRIPT="$1"
 TO="${ADMIN_EMAIL:-admin@${DOMAIN:-yourdomain.com}}"
 LABEL=$(basename "${SCRIPT:-unknown}")

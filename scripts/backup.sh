@@ -171,22 +171,35 @@ else
 fi
 
 # Uptime Kuma (SQLite database + config)
+# tar exit 1 = "file changed as we read it" (live WAL write) — tolerable; exit 2 = fatal, still aborts
 echo "Backing up Uptime Kuma..."
 if [ -d /opt/cryptex/data/uptime-kuma ]; then
-    tar -czf "${BACKUP_PATH}/uptime-kuma.tar.gz" -C /opt/cryptex/data uptime-kuma
+    tar -czf "${BACKUP_PATH}/uptime-kuma.tar.gz" -C /opt/cryptex/data uptime-kuma || [ $? -eq 1 ]
     echo "  uptime-kuma.tar.gz"
 fi
 
 # ActualBudget (budget database)
 echo "Backing up ActualBudget..."
 if [ -d /opt/cryptex/data/actualbudget ]; then
-    tar -czf "${BACKUP_PATH}/actualbudget.tar.gz" -C /opt/cryptex/data actualbudget
+    tar -czf "${BACKUP_PATH}/actualbudget.tar.gz" -C /opt/cryptex/data actualbudget || [ $? -eq 1 ]
     echo "  actualbudget.tar.gz"
 fi
 
 # .env
 cp "${COMPOSE_DIR}/.env" "${BACKUP_PATH}/dot-env"
 echo "  dot-env"
+
+# Sync live host configs into /opt/cryptex/system BEFORE the stack-config tar,
+# so restore.sh always gets current crontab/units/nginx/iptables (drift here is what rotted DR until 2026-06-10)
+echo "Syncing host configs into system/..."
+crontab -l > /opt/cryptex/system/cron/root.crontab 2>/dev/null || true
+cp /opt/cryptex/system/cron/root.crontab /opt/cryptex/system/crontab-root 2>/dev/null || true
+for u in sb-tool cryptex-terminal zellij-proxy zellij-web pkm-watcher iptables-save cryptex-graphify-update; do
+    cp "/etc/systemd/system/${u}.service" /opt/cryptex/system/systemd/ 2>/dev/null || true
+done
+cp /etc/systemd/system/*.timer /opt/cryptex/system/systemd/ 2>/dev/null || true
+cp /etc/nginx/sites-enabled/*.conf /opt/cryptex/system/nginx/sites-enabled/ 2>/dev/null || true
+cp /etc/iptables/rules.v4 /opt/cryptex/system/iptables/rules.v4 2>/dev/null || true
 
 # Stack config (compose file, nginx/pgbouncer/postgres configs, scripts, dockerfiles)
 # Excludes: data/ (backed up above), backups/ (this dir), node_modules

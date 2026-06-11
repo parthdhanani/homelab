@@ -6,6 +6,6 @@ After=network.target
 Type=oneshot
 User=ubuntu
 WorkingDirectory=/opt/cryptex
-ExecStart=/home/ubuntu/.local/bin/graphify --update . --no-viz
+ExecStart=/home/ubuntu/.local/bin/graphify update /opt/cryptex
 StandardOutput=append:/var/log/cryptex-graphify-update.log
 StandardError=append:/var/log/cryptex-graphify-update.log

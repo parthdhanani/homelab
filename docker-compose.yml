@@ -59,7 +59,7 @@ services:
     command: >
       postgres
         -c shared_buffers=256MB
-        -c max_connections=60
+        -c max_connections=80
         -c effective_cache_size=512MB
         -c work_mem=4MB
         -c maintenance_work_mem=64MB
@@ -109,6 +109,8 @@ services:
         ipv4_address: 172.18.0.3
     cap_add: [CHOWN, SETUID, SETGID]
     volumes:
+      # INTENTIONALLY outside /opt/cryptex/data backup scope: holds only n8n queue + Moodle
+      # sessions — loss on rebuild = users re-login + empty queue (accepted 2026-06-11)
       - redis_data:/data
     deploy:
       resources:
@@ -169,7 +171,8 @@ services:
       VERSION: 1
       NETWORKS: 1
       VOLUMES: 1
-      # POST enabled: n8n restarts containers; DELETE enabled: Dockhand image cleanup
+      # POST+DELETE for Dockhand only (restart + image cleanup) — n8n is NOT a consumer (verified 2026-06-10).
+      # TODO: audit Dockhand's actual API calls; POST allows container creation if Dockhand is compromised.
       POST: 1
       DELETE: 1
       EXEC: 0
@@ -236,6 +239,7 @@ services:
       DB_NAME: ob1
       DB_USER: ob1
       DB_PASSWORD: ${OB1_DB_PASSWORD}
+      OB1_API_KEY: ${OB1_API_KEY}
     deploy:
       resources:
         limits:
@@ -488,6 +492,10 @@ services:
       N8N_PROTOCOL: https
       WEBHOOK_URL: https://n8n.${DOMAIN}/
       GENERIC_TIMEZONE: UTC
+      # prune execution data — runs can contain sensitive payloads (e.g. bank statement text)
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: "168"
+      EXECUTIONS_DATA_PRUNE_MAX_COUNT: "1000"
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: cryptex-pgbouncer
       DB_POSTGRESDB_PORT: "5432"
@@ -542,7 +550,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 768M
+          # 12h filter updates load 2.4M rules and spike RSS to ~750M — 768M caused cgroup OOM kills (Jun 9-10)
+          memory: 1280M
           cpus: "0.5"
     healthcheck:
       # DNS port check — stays up during filter updates unlike HTTP UI (which freezes on large lists)
@@ -702,7 +711,7 @@ services:
       DB_USER: ${SHLINK_DB_USER}
       DB_PASSWORD: ${SHLINK_DB_PASSWORD}
       INITIAL_API_KEY: ${SHLINK_API_KEY}
-      ANONYMIZE_REMOTE_ADDR: "false"
+      ANONYMIZE_REMOTE_ADDR: "true"   # truncate visitor IPs (/24) — full IPs were retained forever
       TRACK_ORPHAN_VISITS: "true"
       TIMEZONE: UTC
     depends_on:
@@ -876,7 +885,7 @@ services:
     <<: *defaults
     image: mongo:8
     container_name: cryptex-ferretdb
-    cap_add: [CHOWN, SETUID, SETGID, FOWNER, DAC_OVERRIDE, DAC_READ_SEARCH]
+    cap_add: [CHOWN, SETUID, SETGID, FOWNER, DAC_OVERRIDE]   # DAC_READ_SEARCH removed 2026-06-11 — mongo doesn't need host-wide read bypass
     networks:
       cryptex_net:
         ipv4_address: 172.18.0.45

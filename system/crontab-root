@@ -2,9 +2,9 @@
 # Health check + watchdog every 5 minutes
 */5 * * * * /opt/cryptex/scripts/health-check-cron.sh; /opt/cryptex/scripts/watchdog.sh 2>&1
 # Notes build every 15 minutes — change-aware, skips if vault unchanged
-*/15 * * * * /opt/cryptex/scripts/notes-build.sh >> /var/log/cryptex-notes.log 2>&1
+*/15 * * * * HOME=/home/ubuntu /opt/cryptex/scripts/notes-build.sh >> /var/log/cryptex-notes.log 2>&1
 # Daily backup at 3:00 AM UTC
-0 3 * * * /opt/cryptex/scripts/backup.sh >> /var/log/cryptex-backup.log 2>&1
+0 3 * * * /opt/cryptex/scripts/cron-notify.sh /opt/cryptex/scripts/backup.sh >> /var/log/cryptex-backup.log 2>&1
 # Weekly Docker cleanup (Sunday 4:00 AM UTC) — targeted prune preserves rollback images
 0 4 * * 0 { docker container prune -f; docker network prune -f; docker image prune -f; docker volume prune -f --filter label!=cryptex; } >> /var/log/cryptex-prune.log 2>&1
 # Weekly auto-update (Sunday 5:00 AM UTC)

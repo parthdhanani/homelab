@@ -1,0 +1,20 @@
+[Unit]
+Description=Cryptex Terminal — ghostty-web powered web terminal
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/cryptex/workspace/terminal
+Environment=PORT=8085
+Environment=HOST=127.0.0.1
+Environment=CMD=/opt/cryptex/workspace/terminal/zellij-session.sh
+Environment=TERM_ARGS=
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
