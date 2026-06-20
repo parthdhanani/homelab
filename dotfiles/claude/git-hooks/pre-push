@@ -1,0 +1,38 @@
+#!/bin/bash
+# Blocks pushes to the public github-public/homelab remote if gitleaks finds
+# secrets in the commits being pushed. Private 'origin' pushes are unaffected —
+# real secrets legitimately live there.
+remote="$1"
+url="$2"
+
+case "$url" in
+  *parthdhanani/homelab*) ;;
+  *) exit 0 ;;
+esac
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-push: gitleaks not found, skipping public-repo secret scan (install it before relying on this)" >&2
+  exit 0
+fi
+
+zero="0000000000000000000000000000000000000000"
+range=""
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue
+  if [ "$remote_sha" = "$zero" ]; then
+    range="$local_sha"
+  else
+    range="$remote_sha..$local_sha"
+  fi
+done
+
+[ -z "$range" ] && exit 0
+
+echo "pre-push: scanning $range for secrets before pushing to public $remote ($url)..." >&2
+if ! gitleaks detect --source . --log-opts "$range" -v; then
+  echo "pre-push BLOCKED: gitleaks found potential secrets in commits being pushed to $remote." >&2
+  echo "Review the findings above. If they are real, fix and re-commit. If false positives, add to .gitleaks.toml allowlist and retry." >&2
+  exit 1
+fi
+
+exit 0

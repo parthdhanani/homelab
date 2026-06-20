@@ -1,0 +1,16 @@
+title = "cryptex gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "known template placeholders, not real secrets"
+paths = [
+  '''secrets\.env\.template''',
+  '''dotfiles/claude/skill-library/.*''',
+]
+regexes = [
+  '''YOUR_AUTH_TOKEN''',
+  '''your_personal_api_key''',
+  '''phx_your_personal_api_key''',
+]
