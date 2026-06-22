@@ -227,7 +227,7 @@ No inbound ports are open on the VPS. Tunnel runs as `cryptex-cloudflared`.
 |---|---|
 | Server user | `admin@cryptex` |
 | Server password | `vnSQoVbhBs3SweAglxhAUEu8` |
-| Repository password | `SCRUBBED_KOPIA_PASSWORD` |
+| Repository password | `PASTE_YOUR_KOPIA_REPO_PASSWORD` |
 
 **Forgejo** — `https://git.psidex.com`
 | Key | Value |
@@ -290,7 +290,7 @@ No inbound ports are open on the VPS. Tunnel runs as `cryptex-cloudflared`.
 |---|---|
 | Internal | `cryptex-ferretdb:27017` |
 | Root user | `ferretdb_user` |
-| Root password | `SCRUBBED_FERRETDB_PASSWORD` |
+| Root password | `PASTE_YOUR_FERRETDB_ROOT_PASSWORD` |
 | Auth DB | `admin` |
 | Data | `/opt/cryptex/data/mongodb/` |
 | Backup | `mongodump --archive --gzip` via backup.sh |
@@ -311,7 +311,7 @@ No inbound ports are open on the VPS. Tunnel runs as `cryptex-cloudflared`.
 | Key | Value |
 |---|---|
 | Key ID | `00386ba2248857d0000000003` |
-| App key | `SCRUBBED_B2_SECRET_KEY` |
+| App key | `PASTE_YOUR_B2_SECRET_KEY` |
 | Bucket | `cryptex` |
 | Endpoint | `s3.eu-central-003.backblazeb2.com` |
 | Prefix | `cryptex-vps/` (bucket had existing data with different password) |
@@ -593,9 +593,9 @@ docker compose up -d --no-deps librechat
 docker exec -it cryptex-kopia kopia repository connect s3 \
   --bucket=cryptex \
   --access-key=00386ba2248857d0000000003 \
-  --secret-access-key=SCRUBBED_B2_SECRET_KEY \
+  --secret-access-key=PASTE_YOUR_B2_SECRET_KEY \
   --endpoint=s3.eu-central-003.backblazeb2.com \
-  --password=SCRUBBED_KOPIA_PASSWORD
+  --password=PASTE_YOUR_KOPIA_REPO_PASSWORD
 ```
 
 ### Restore MongoDB from backup
@@ -603,7 +603,7 @@ docker exec -it cryptex-kopia kopia repository connect s3 \
 # Extract backup tarball first, then:
 docker exec -i cryptex-ferretdb mongorestore \
   --username=ferretdb_user \
-  --password=SCRUBBED_FERRETDB_PASSWORD \
+  --password=PASTE_YOUR_FERRETDB_ROOT_PASSWORD \
   --authenticationDatabase=admin \
   --archive --gzip < /path/to/mongodb.archive.gz
 ```
