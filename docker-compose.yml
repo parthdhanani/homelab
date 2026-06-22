@@ -127,7 +127,7 @@ services:
   # 3. Cloudflared — Cloudflare Tunnel (outbound only)
   cloudflared:
     <<: *defaults
-    image: cloudflare/cloudflared:2026.5.2
+    image: cloudflare/cloudflared:2026.6.1
     container_name: cryptex-cloudflared
     networks:
       cryptex_net:
