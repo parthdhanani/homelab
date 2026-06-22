@@ -255,7 +255,7 @@ No inbound ports are open on the VPS. Tunnel runs as `cryptex-cloudflared`.
 | Key | Value |
 |---|---|
 | Admin UI | `https://links.psidex.com` |
-| API key | `SCRUBBED_SHLINK_KEY` |
+| API key | `PASTE_YOUR_SHLINK_API_KEY` |
 | DB user | `shlink_user` |
 | DB password | `1bhCeXIORhOvZANlOF4Bw9tB` |
 | DB connection | Direct to `cryptex-postgres:5432` |
@@ -563,7 +563,7 @@ cat /tmp/restore/TIMESTAMP/postgres_all.sql | \
 ```bash
 # Via API
 curl -X POST https://go.psidex.com/rest/v3/short-urls \
-  -H "X-Api-Key: SCRUBBED_SHLINK_KEY" \
+  -H "X-Api-Key: PASTE_YOUR_SHLINK_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"longUrl":"https://example.com","customSlug":"myslug"}'
 # Or via UI: https://links.psidex.com
