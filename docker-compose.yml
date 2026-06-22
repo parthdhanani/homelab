@@ -565,7 +565,7 @@ services:
   # 14. Kopia — Backup server (local repository, initialized by deploy.sh)
   kopia:
     <<: *defaults
-    image: kopia/kopia:0.22.3
+    image: kopia/kopia:0.23.1
     container_name: cryptex-kopia
     networks:
       cryptex_net:
