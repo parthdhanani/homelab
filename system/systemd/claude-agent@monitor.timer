@@ -1,0 +1,10 @@
+[Unit]
+Description=claude-agent monitor (daily web change check)
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

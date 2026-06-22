@@ -161,7 +161,6 @@ NOW=$(date +%s)
 
 if [ "$FAIL" -gt 0 ]; then
     FAILED_LIST=$(docker compose ps --format '{{.Name}} {{.State}} ({{.Status}})' 2>/dev/null | grep -v " running " || echo "unknown")
-    PAYLOAD="{\"pass\":${PASS},\"warn\":${WARN},\"fail\":${FAIL},\"failed\":\"${FAILED_LIST}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
 
     # Debounce: only fire alert if last alert was >15 minutes ago
     LAST_ALERT=$(cat "$ALERT_STATE_FILE" 2>/dev/null || echo 0)
@@ -169,16 +168,10 @@ if [ "$FAIL" -gt 0 ]; then
     if [ $(( NOW - LAST_ALERT )) -gt "$DEBOUNCE_SECS" ]; then
         echo "$NOW" > "$ALERT_STATE_FILE"
 
-        # Primary: n8n webhook (handles Telegram formatting + logging)
-        if ! curl -sf --max-time 5 -X POST "http://cryptex-n8n:5678/webhook/health-alert" \
-            -H "Content-Type: application/json" \
-            -d "$PAYLOAD" >/dev/null 2>&1; then
-            # Fallback: direct Telegram API when n8n is down
-            if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
-                MSG="🚨 CRYPTEX HEALTH ALERT%0A${FAIL} containers FAILED (n8n also down — direct alert)%0AFailed: ${FAILED_LIST}%0A$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-                curl -sf "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-                    -d "chat_id=${TELEGRAM_CHAT_ID}&text=${MSG}" >/dev/null 2>&1 || true
-            fi
+        if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
+            MSG="🚨 CRYPTEX HEALTH ALERT%0A${FAIL} containers FAILED%0AFailed: ${FAILED_LIST}%0A$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            curl -sf "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+                -d "chat_id=${TELEGRAM_CHAT_ID}&text=${MSG}" >/dev/null 2>&1 || true
         fi
     else
         echo "  Alert suppressed (debounce: last sent $(( (NOW - LAST_ALERT) / 60 ))m ago, next in $(( (DEBOUNCE_SECS - (NOW - LAST_ALERT)) / 60 ))m)"

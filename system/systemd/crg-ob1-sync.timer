@@ -1,0 +1,9 @@
+[Unit]
+Description=Nightly code-review-graph → OB1 sync
+
+[Timer]
+OnCalendar=*-*-* 03:37:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

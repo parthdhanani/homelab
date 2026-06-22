@@ -98,10 +98,6 @@ if [ -n "$SERVICE" ]; then
         echo "❌ ${SERVICE} failed (state: ${STATE})"
         echo "Last 20 log lines:"
         docker logs "cryptex-${SERVICE}" --tail 20
-        curl -sf --max-time 5 -X POST "http://cryptex-n8n:5678/webhook/health-alert" \
-            -H "Content-Type: application/json" \
-            -d "{\"pass\":0,\"warn\":0,\"fail\":1,\"failed\":\"cryptex-${SERVICE} ${STATE} after update\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
-            >/dev/null 2>&1 || true
         exit 1
     fi
 else
@@ -162,10 +158,6 @@ else
         done < "$ROLLBACK_SNAPSHOT"
         docker compose up -d --remove-orphans
         echo "Rollback complete. Manual inspection required."
-        curl -sf --max-time 5 -X POST "http://cryptex-n8n:5678/webhook/health-alert" \
-            -H "Content-Type: application/json" \
-            -d "{\"pass\":0,\"warn\":0,\"fail\":1,\"failed\":\"full update rolled back — health check failed\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
-            >/dev/null 2>&1 || true
         exit 1
     fi
 fi

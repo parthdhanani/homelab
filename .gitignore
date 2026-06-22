@@ -86,3 +86,4 @@ dotfiles/claude/file-history/
 dotfiles/claude/shell-snapshots/
 dotfiles/claude/jobs/
 dotfiles/claude/.credentials.json
+.claude/MEMORY.md

@@ -16,12 +16,18 @@ if [[ "$FILE" == *.yml || "$FILE" == *.yaml ]]; then
     fi
 fi
 
-# shellcheck on .sh
+# Run shellcheck against .sh files
 if [[ "$FILE" == *.sh ]]; then
     if command -v shellcheck &>/dev/null && [[ -f "$FILE" ]]; then
         OUT=$(shellcheck -S warning "$FILE" 2>&1)
         [[ -n "$OUT" ]] && echo "[shellcheck] $FILE" && echo "$OUT"
     fi
+fi
+
+# slop_lint on frontend/UI files — flags AI tells (em-dashes, numbered eyebrows,
+# scroll cues, etc). Silent unless something is found. Advisory, never blocks.
+if [[ "$FILE" =~ \.(html|htm|jsx|tsx|vue|svelte|astro)$ ]] && [[ -f "$FILE" ]]; then
+    python3 "$HOME/.claude/hooks/slop_lint.py" "$FILE" --quiet 2>/dev/null
 fi
 
 # Network config reminder — no curl, just flag it

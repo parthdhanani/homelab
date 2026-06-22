@@ -64,9 +64,11 @@ def get_embedder():
     return _embedder
 
 
-def embed(text: str) -> list[float]:
+def embed(text: str, kind: str = "document") -> list[float]:
+    # nomic-embed-text-v1.5 requires task prefixes; omitting them degrades retrieval
+    prefix = "search_query: " if kind == "query" else "search_document: "
     model = get_embedder()
-    return next(model.embed([text])).tolist()
+    return next(model.embed([prefix + text])).tolist()
 
 
 def init_db():
@@ -121,7 +123,7 @@ def _remember(content: str, source: str = "manual", tags: list[str] = [], sessio
 def _search(query: str, k: int = 5) -> list[dict]:
     if not query.strip():
         return []
-    vec = embed(query)
+    vec = embed(query, kind="query")
     conn = get_db()
     try:
         from psycopg2.extras import RealDictCursor

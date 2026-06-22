@@ -76,6 +76,13 @@ Expected time: ~15-25 min on Oracle Always-Free ARM (4 OCPU / 24GB).
 
 ## What is NOT automated
 
+- **SSH key for GitHub** — step 1 of every flow above (`git clone git@github.com:...`)
+  needs your GitHub SSH key already loaded on the fresh VPS (`~/.ssh/id_*` + agent,
+  or `ssh-add`). Three repos are private and required for a full rebuild:
+  `cryptex` (this playbook), `dotfiles` (~/.claude on branch `main` + ~/AI_Space
+  on branch `master`, restored by `05-dotfiles.sh`), and optionally `homelab`.
+  **Your DR "key" bundle must include this SSH key, not just B2/Kopia creds** —
+  without it you cannot even clone step 1.
 - **Oracle Security List rules** — open 22/tcp, 80/tcp, 443/tcp via OCI console
 - **DNS / Cloudflare records** — set per `workspace/AI_Space-README.md` domain map
 - **Cloudflare Tunnel creation** — paste the `TUNNEL_TOKEN` into `.env`

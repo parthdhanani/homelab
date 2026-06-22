@@ -243,8 +243,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2560M
-          cpus: "0.75"
+          memory: 4096M
+          cpus: "1.5"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
       interval: 30s
@@ -386,6 +386,7 @@ services:
 
   # 9. Vaultwarden — Password manager
   vaultwarden:
+    profiles: ["disabled"]
     <<: *defaults
     image: vaultwarden/server:1.36.0-alpine
     container_name: cryptex-vaultwarden
@@ -695,6 +696,7 @@ services:
 
   # ── Shlink — URL Shortener ───────────────────────────────────────────────
   shlink:
+    profiles: ["disabled"]
     <<: *defaults
     image: shlinkio/shlink:5.0.2
     container_name: cryptex-shlink
@@ -732,6 +734,7 @@ services:
       start_period: 60s
 
   shlink-web:
+    profiles: ["disabled"]
     <<: *defaults
     image: shlinkio/shlink-web-client:4.7.0
     container_name: cryptex-shlink-web
@@ -752,6 +755,7 @@ services:
 
   # 19. Forgejo — Self-hosted Git (Codeberg fork, no GitHub dependency)
   forgejo:
+    profiles: ["disabled"]
     <<: *defaults
     image: codeberg.org/forgejo/forgejo:15.0.1
     container_name: cryptex-forgejo
@@ -806,6 +810,7 @@ services:
   # After deploy: add feeds via news.DOMAIN UI, then n8n digest runs automatically
   # Cleanup policy: read articles removed after 30d, unread after 60d (prevents Postgres bloat)
   miniflux:
+    profiles: ["disabled"]
     <<: *defaults
     image: miniflux/miniflux:2.2.19
     container_name: cryptex-miniflux
@@ -853,6 +858,7 @@ services:
   # user 1001 = actual (image-defined) — required because cap_drop:ALL removes CAP_DAC_OVERRIDE,
   # so root can't write to dirs it doesn't own; running as actual avoids that entirely
   actualbudget:
+    profiles: ["disabled"]
     <<: *defaults
     image: actualbudget/actual-server:26.5.2
     container_name: cryptex-actualbudget
@@ -882,6 +888,7 @@ services:
   # FerretDB v1/v2 both lacked required findAndModify compatibility for LibreChat.
   # MongoDB Community ARM64 is the supported backend. Standalone, no replica set needed.
   ferretdb:
+    profiles: ["disabled"]
     <<: *defaults
     image: mongo:8
     container_name: cryptex-ferretdb
@@ -908,6 +915,7 @@ services:
 
   # ── LibreChat — AI chat interface (replaces OpenWebUI) ───────────────────────
   librechat:
+    profiles: ["disabled"]
     <<: *defaults
     image: ghcr.io/danny-avila/librechat:v0.8.5
     container_name: cryptex-librechat
@@ -965,6 +973,7 @@ services:
 
   # ── SearXNG — Private self-hosted search engine ───────────────────────────
   searxng:
+    profiles: ["disabled"]
     <<: *defaults
     image: searxng/searxng:2026.5.9-849e17e43
     container_name: cryptex-searxng
@@ -995,6 +1004,7 @@ services:
 
   # ── OpenList — Cloud storage aggregator (Alist fork, no telemetry) ─────────
   alist:
+    profiles: ["disabled"]
     <<: *defaults
     image: openlistteam/openlist:v4.2.1
     container_name: cryptex-alist
@@ -1022,6 +1032,7 @@ services:
 
   # ── Stirling PDF — Self-hosted PDF tools ─────────────────────────────────
   stirling-pdf:
+    profiles: ["disabled"]
     <<: *defaults
     image: frooodle/s-pdf:2.10.1
     container_name: cryptex-stirling-pdf
@@ -1070,6 +1081,7 @@ services:
 
   # ── IT-Tools — Developer utility collection ──────────────────────────────
   it-tools:
+    profiles: ["disabled"]
     <<: *defaults
     image: corentinth/it-tools:2024.10.22-7ca5933
     container_name: cryptex-it-tools
@@ -1121,6 +1133,7 @@ services:
   # After first deploy: visit https://id.DOMAIN to create admin account, then create OIDC clients
   # for each service and fill in POCKETID_* vars in .env, then `docker compose up -d`
   pocketid:
+    profiles: ["disabled"]
     <<: *defaults
     image: ghcr.io/pocket-id/pocket-id:v2.6.2
     container_name: cryptex-pocketid

@@ -78,45 +78,49 @@ else
 fi
 
 # ── Write JSON report ─────────────────────────────────────────────────────────
+# Values pass through the environment, never interpolated into Python source: a
+# single quote in a container name or grepped log line would otherwise raise a
+# SyntaxError that 2>/dev/null swallows, silently producing an EMPTY report and
+# breaking /vps-health + n8n parsing. int() casts tolerate empty numeric vars.
+export TS DATE VERDICT ISSUES ISSUE_LIST HC_PASS HC_WARN HC_FAIL HC_FAILED \
+       DISK_PCT DISK_HUMAN MEM_FREE MEM_TOTAL TOTAL AUDITD IPTABLES_RULES \
+       HIGH_RESTART DOCKHAND_UPDATES BACKUP_STATUS
 python3 -c "
-import json
+import json, os
+def i(k):
+    try: return int(os.environ.get(k, '0') or '0')
+    except ValueError: return 0
+def s(k): return os.environ.get(k, '')
 report = {
-    'timestamp': '$TS',
-    'date': '$DATE',
-    'verdict': '$VERDICT',
-    'issues': $ISSUES,
-    'issue_list': '${ISSUE_LIST}'.strip(),
+    'timestamp': s('TS'),
+    'date': s('DATE'),
+    'verdict': s('VERDICT'),
+    'issues': i('ISSUES'),
+    'issue_list': s('ISSUE_LIST').strip(),
     'health_check': {
-        'pass': $HC_PASS,
-        'warn': $HC_WARN,
-        'fail': $HC_FAIL,
-        'failed_services': '${HC_FAILED}'.rstrip(','),
+        'pass': i('HC_PASS'),
+        'warn': i('HC_WARN'),
+        'fail': i('HC_FAIL'),
+        'failed_services': s('HC_FAILED').rstrip(','),
     },
     'system': {
-        'disk_pct': $DISK_PCT,
-        'disk_human': '$DISK_HUMAN',
-        'mem_free_mb': $MEM_FREE,
-        'mem_total_mb': $MEM_TOTAL,
-        'containers_running': $TOTAL,
-        'auditd': '$AUDITD',
-        'iptables_rules': $IPTABLES_RULES,
+        'disk_pct': i('DISK_PCT'),
+        'disk_human': s('DISK_HUMAN'),
+        'mem_free_mb': i('MEM_FREE'),
+        'mem_total_mb': i('MEM_TOTAL'),
+        'containers_running': i('TOTAL'),
+        'auditd': s('AUDITD'),
+        'iptables_rules': i('IPTABLES_RULES'),
     },
     'containers': {
-        'high_restart': '${HIGH_RESTART}'.rstrip(','),
+        'high_restart': s('HIGH_RESTART').rstrip(','),
     },
-    'dockhand_updates': '${DOCKHAND_UPDATES}'.rstrip('|'),
-    'backup_status': '${BACKUP_STATUS}'.rstrip('|'),
+    'dockhand_updates': s('DOCKHAND_UPDATES').rstrip('|'),
+    'backup_status': s('BACKUP_STATUS').rstrip('|'),
 }
 print(json.dumps(report, indent=2))
 " > "$REPORT" 2>/dev/null
 
-# ── Notify n8n on NEEDS_ATTENTION (secondary alert path) ─────────────────────
-if [ "$VERDICT" = "NEEDS_ATTENTION" ]; then
-    curl -sf --max-time 5 -X POST "http://172.18.0.8:5678/webhook/health-alert" \
-        -H "Content-Type: application/json" \
-        -d "{\"source\":\"daily-report\",\"verdict\":\"${VERDICT}\",\"issues\":\"${ISSUE_LIST}\",\"hc_fail\":${HC_FAIL},\"timestamp\":\"${TS}\"}" \
-        >/dev/null 2>&1 || true
-fi
 
 # ── Store compact summary in OB1 ──────────────────────────────────────────────
 if [ "$VERDICT" = "HEALTHY" ]; then
@@ -127,10 +131,13 @@ else
 fi
 
 OB1_TOKEN=$(cat /home/ubuntu/.claude/secrets/ob1.token 2>/dev/null)
-curl -sf --max-time 5 -X POST "${OB1}/api/remember" \
+# Build the payload with json.dumps so a quote in SUMMARY can't produce invalid
+# JSON that OB1 rejects (silently, under || true), dropping the memory.
+OB1_PAYLOAD=$(SUMMARY="$SUMMARY" python3 -c "import json,os; print(json.dumps({'content': os.environ.get('SUMMARY',''), 'source': 'daily-report', 'tags': ['vps','health','automated']}))" 2>/dev/null)
+[ -n "$OB1_PAYLOAD" ] && curl -sf --max-time 5 -X POST "${OB1}/api/remember" \
     -H "Content-Type: application/json" \
     ${OB1_TOKEN:+-H "Authorization: Bearer $OB1_TOKEN"} \
-    -d "{\"content\": \"${SUMMARY}\", \"source\": \"daily-report\", \"tags\": [\"vps\", \"health\", \"automated\"]}" \
+    -d "$OB1_PAYLOAD" \
     >/dev/null 2>&1 || true
 
 # ── Graphify summary → OB1 (so the code graph is semantically findable) ──────
@@ -139,13 +146,15 @@ if [ -f "$GRAPH" ]; then
     G_SUMMARY=$(python3 -c "
 import json
 g = json.load(open('$GRAPH'))
-nodes, edges = g.get('nodes', []), g.get('edges', [])
+nodes = g.get('nodes', [])
+edges = g.get('links', g.get('edges', []))
 kinds = {}
 for n in nodes:
-    k = n.get('type') or n.get('kind') or '?'
+    k = n.get('file_type') or '?'
     kinds[k] = kinds.get(k, 0) + 1
 top = ', '.join(f'{k}:{v}' for k, v in sorted(kinds.items(), key=lambda x: -x[1])[:6])
-print(f'Cryptex container knowledge graph (graphify): {len(nodes)} nodes, {len(edges)} edges. Node types: {top}. Query: /graphify query. Canonical: /opt/cryptex/graphify-out/graph.json')
+commit = str(g.get('built_at_commit', ''))[:8]
+print(f'Cryptex VPS infrastructure knowledge graph (graphify, commit {commit}): {len(nodes)} nodes, {len(edges)} edges covering docker compose services, container configs, scripts, env wiring. File types: {top}. Query with /graphify query. Canonical: /opt/cryptex/graphify-out/graph.json')
 " 2>/dev/null)
     # change-aware: only ingest when the graph differs from last ingest
     G_HASH=$(printf '%s' "$G_SUMMARY" | md5sum | cut -d' ' -f1)

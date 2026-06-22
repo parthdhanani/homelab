@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
-# 05-dotfiles.sh — install user dotfiles (~/.claude, shell rc files).
+# 05-dotfiles.sh — install user dotfiles (~/.claude, ~/AI_Space, shell rc files).
 # Runs as the target user (ubuntu), NOT root.
+#
+# ~/.claude and ~/AI_Space are two actively-updated checkouts of the SAME
+# private GitHub repo (parthdhanani/dotfiles) on different branches:
+#   ~/.claude   -> branch main
+#   ~/AI_Space  -> branch master
+# Neither is the dotfiles/claude/ snapshot vendored inside this cryptex repo
+# (that's a one-time 2026-05-18 export that drifts immediately and must never
+# be restored from). Clone the real repo/branches instead. Requires SSH
+# access to the private repo already configured (see README.md "What is NOT
+# automated").
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$SCRIPT_DIR/lib.sh"
@@ -8,29 +18,37 @@ require_user
 
 TARGET_HOME="${HOME:-/home/ubuntu}"
 SRC="$REPO_ROOT/dotfiles"
+DOTFILES_REPO="${DOTFILES_REPO:-git@github.com:parthdhanani/dotfiles.git}"
 
-log "============ 05-dotfiles: user shell + claude ============"
+log "============ 05-dotfiles: user shell + claude + AI_Space ============"
 
-# -------- ~/.claude --------
-if [ -d "$SRC/claude" ]; then
-  CLAUDE_DIR="$TARGET_HOME/.claude"
-  if [ -d "$CLAUDE_DIR" ] && [ ! -L "$CLAUDE_DIR" ]; then
-    # Existing non-symlink — back up once
-    if [ ! -d "$CLAUDE_DIR.backup-pre-bootstrap" ]; then
-      mv "$CLAUDE_DIR" "$CLAUDE_DIR.backup-pre-bootstrap"
-      ok "backed up existing ~/.claude to ~/.claude.backup-pre-bootstrap"
+# clone_or_skip <dest-dir> <branch>
+clone_or_skip() {
+  local dest="$1" branch="$2"
+  if [ -d "$dest/.git" ]; then
+    if git -C "$dest" remote get-url origin 2>/dev/null | grep -q "dotfiles"; then
+      skip "$dest already a dotfiles git checkout"
+    else
+      warn "$dest exists with a different git remote — leaving as-is, not touching"
     fi
+  elif [ -d "$dest" ]; then
+    if [ ! -d "${dest}.backup-pre-bootstrap" ]; then
+      mv "$dest" "${dest}.backup-pre-bootstrap"
+      ok "backed up existing $dest to ${dest}.backup-pre-bootstrap"
+    fi
+    git clone --branch "$branch" "$DOTFILES_REPO" "$dest"
+    ok "cloned dotfiles repo (branch $branch) into $dest"
+  else
+    git clone --branch "$branch" "$DOTFILES_REPO" "$dest"
+    ok "cloned dotfiles repo (branch $branch) into $dest"
   fi
+}
 
-  if [ ! -d "$CLAUDE_DIR" ]; then
-    mkdir -p "$CLAUDE_DIR"
-  fi
+# -------- ~/.claude (branch main) --------
+CLAUDE_DIR="$TARGET_HOME/.claude"
+clone_or_skip "$CLAUDE_DIR" main
 
-  # Rsync repo dotfiles/claude/ into ~/.claude/ WITHOUT deleting user runtime dirs
-  # (sessions, cache, projects, telemetry are not in repo and must survive)
-  rsync -a --update "$SRC/claude/" "$CLAUDE_DIR/"
-  ok "synced ~/.claude (additive — runtime dirs preserved)"
-
+if [ -d "$CLAUDE_DIR" ]; then
   # Ensure hook scripts are executable
   find "$CLAUDE_DIR/hooks" -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
   find "$CLAUDE_DIR/hooks" -name "*.py" -exec chmod +x {} \; 2>/dev/null || true
@@ -38,6 +56,9 @@ if [ -d "$SRC/claude" ]; then
   find "$CLAUDE_DIR" -maxdepth 1 -name "statusline*.sh" -exec chmod +x {} \; 2>/dev/null || true
   find "$CLAUDE_DIR" -maxdepth 1 -name "statusline*.py" -exec chmod +x {} \; 2>/dev/null || true
 fi
+
+# -------- ~/AI_Space (branch master) --------
+clone_or_skip "$TARGET_HOME/AI_Space" master
 
 # -------- shell rc files --------
 if [ -d "$SRC/shell" ]; then

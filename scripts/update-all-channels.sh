@@ -357,10 +357,3 @@ echo "  ${CYN}Skipped:${RST}  ${#SKIPPED[@]} (already current)"
 echo ""
 log "=== update-all-channels complete: ${#UPDATED[@]} updated, ${#SKIPPED[@]} skipped, ${#FAILED[@]} failed ==="
 
-# Notify n8n if anything failed
-if [ ${#FAILED[@]} -gt 0 ]; then
-    curl -sf --max-time 5 -X POST "http://172.18.0.8:5678/webhook/health-alert" \
-        -H "Content-Type: application/json" \
-        -d "{\"pass\":0,\"warn\":0,\"fail\":${#FAILED[@]},\"failed\":\"update-all-channels: ${FAILED[*]}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
-        >/dev/null 2>&1 || true
-fi

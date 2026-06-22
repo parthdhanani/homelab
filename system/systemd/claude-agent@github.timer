@@ -1,0 +1,10 @@
+[Unit]
+Description=claude-agent github (weekly OSS digest, Tue ~19:00 IST)
+
+[Timer]
+OnCalendar=Tue *-*-* 13:30:00
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

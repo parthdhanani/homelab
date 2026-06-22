@@ -1,0 +1,10 @@
+[Unit]
+Description=claude-agent jobhunt (weekday role search)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 02:30:00
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

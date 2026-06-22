@@ -1,0 +1,10 @@
+[Unit]
+Description=claude-agent deepdive (weekly deep-interest email, Sun ~10:00 IST)
+
+[Timer]
+OnCalendar=Sun *-*-* 04:30:00
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

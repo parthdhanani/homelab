@@ -32,10 +32,18 @@ if [ "$DISK_FREE_GB" -lt 5 ]; then
 fi
 
 mkdir -p "$BACKUP_PATH"
+# Any exit (including early failure on a validation check below) must not leave
+# a multi-GB uncompressed dump directory behind — orphaned dirs from past failed
+# runs piled up in /backups and got re-snapshotted by Kopia every night, which is
+# what filled the Backblaze B2 free tier (10GB) on 2026-06-19.
+trap 'rm -rf "$BACKUP_PATH"' EXIT
 
 # PostgreSQL dump (all databases)
 echo "Dumping PostgreSQL..."
-docker exec cryptex-postgres pg_dumpall -U "${POSTGRES_USER}" > "${BACKUP_PATH}/postgres_all.sql"
+# --clean --if-exists makes the dump idempotent: DROP ... IF EXISTS before each
+# CREATE so a re-run / partial-state restore can't leave a hybridized DB.
+# --if-exists keeps it silent on a fresh VPS where nothing exists yet.
+docker exec cryptex-postgres pg_dumpall -U "${POSTGRES_USER}" --clean --if-exists > "${BACKUP_PATH}/postgres_all.sql"
 
 # Validate dump is non-trivial and contains expected content
 DUMP_SIZE=$(wc -c < "${BACKUP_PATH}/postgres_all.sql")
@@ -72,7 +80,7 @@ fi
 
 # MongoDB dump (LibreChat data — users, conversations, messages)
 echo "Backing up MongoDB..."
-if docker inspect cryptex-ferretdb >/dev/null 2>&1; then
+if [ "$(docker inspect --format='{{.State.Running}}' cryptex-ferretdb 2>/dev/null)" = "true" ]; then
     docker exec cryptex-ferretdb mongodump \
         --username="${FERRETDB_DB_USER:-ferretdb_user}" \
         --password="${FERRETDB_DB_PASSWORD}" \
@@ -80,9 +88,9 @@ if docker inspect cryptex-ferretdb >/dev/null 2>&1; then
         --archive \
         --gzip 2>/dev/null > "${BACKUP_PATH}/mongodb.archive.gz" \
         && echo "  mongodb.archive.gz ($(du -h "${BACKUP_PATH}/mongodb.archive.gz" | cut -f1))" \
-        || { rm -f "${BACKUP_PATH}/mongodb.archive.gz" 2>/dev/null; echo "  (MongoDB dump skipped — container may not be running)"; }
+        || { rm -f "${BACKUP_PATH}/mongodb.archive.gz" 2>/dev/null; echo "  (MongoDB dump failed — container running but mongodump errored)"; }
 else
-    echo "  (MongoDB container not found — skipping)"
+    echo "  (ferretdb frozen — skipped)"
 fi
 
 # Vaultwarden (safe SQLite backup via .backup command)
@@ -171,17 +179,21 @@ else
 fi
 
 # Uptime Kuma (SQLite database + config)
-# tar exit 1 = "file changed as we read it" (live WAL write) — tolerable; exit 2 = fatal, still aborts
+# Non-critical monitoring data: tar exit 1 (live WAL write) is normal; exit 2
+# (fatal read) must NOT abort the whole backup and discard the validated
+# Postgres dump / .env / stack-config — warn loudly and continue.
 echo "Backing up Uptime Kuma..."
 if [ -d /opt/cryptex/data/uptime-kuma ]; then
-    tar -czf "${BACKUP_PATH}/uptime-kuma.tar.gz" -C /opt/cryptex/data uptime-kuma || [ $? -eq 1 ]
+    tar -czf "${BACKUP_PATH}/uptime-kuma.tar.gz" -C /opt/cryptex/data uptime-kuma \
+        || { rc=$?; [ "$rc" -gt 1 ] && echo "  WARN: uptime-kuma tar exited $rc (non-fatal, continuing)"; true; }
     echo "  uptime-kuma.tar.gz"
 fi
 
 # ActualBudget (budget database)
 echo "Backing up ActualBudget..."
 if [ -d /opt/cryptex/data/actualbudget ]; then
-    tar -czf "${BACKUP_PATH}/actualbudget.tar.gz" -C /opt/cryptex/data actualbudget || [ $? -eq 1 ]
+    tar -czf "${BACKUP_PATH}/actualbudget.tar.gz" -C /opt/cryptex/data actualbudget \
+        || { rc=$?; [ "$rc" -gt 1 ] && echo "  WARN: actualbudget tar exited $rc (non-fatal, continuing)"; true; }
     echo "  actualbudget.tar.gz"
 fi
 
@@ -240,10 +252,15 @@ ls -t "${BACKUP_DIR}"/cryptex-*.tar.gz 2>/dev/null | tail -n +8 | xargs rm -f 2>
 # If local filesystem, the snapshot is stored in /opt/cryptex/data/kopia/repository.
 
 echo "Creating Kopia snapshot..."
+KOPIA_STATUS="skipped"
 if docker exec cryptex-kopia kopia repository status >/dev/null 2>&1; then
-    docker exec cryptex-kopia kopia snapshot create /backups 2>/dev/null \
-        && echo "  Kopia snapshot: /backups" \
-        || echo "  WARNING: Kopia snapshot failed"
+    if docker exec cryptex-kopia kopia snapshot create /backups 2>/dev/null; then
+        echo "  Kopia snapshot: /backups"
+        KOPIA_STATUS="success"
+    else
+        echo "  WARNING: Kopia snapshot failed"
+        KOPIA_STATUS="failed"
+    fi
     # Show latest snapshot summary
     docker exec cryptex-kopia kopia snapshot list /backups --max-results=1 2>/dev/null \
         | grep -v "^$" | tail -1 || true
@@ -251,11 +268,24 @@ else
     echo "  Kopia skipped (repository not initialized — run deploy.sh to configure)"
 fi
 
+# Offsite snapshot failure must be loud — this is what silently broke for a week
+# (n8n/Uptime Kuma only ever reflected the local tar.gz step, never Kopia's own status)
+if [ "$KOPIA_STATUS" = "failed" ] && [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
+    curl -sf --max-time 5 \
+        "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+        -d "chat_id=${TELEGRAM_CHAT_ID}&text=⚠️ CRYPTEX: Kopia offsite snapshot failed (local backup OK) — check B2 cap/quota" \
+        >/dev/null 2>&1 || true
+fi
+
 echo "Sending status to n8n..."
 SIZE=$(du -h "$FINAL" | cut -f1)
-curl -sf --max-time 10 -X POST "http://cryptex-n8n:5678/webhook/backup-status" -H "Content-Type: application/json" -d "{\"status\":\"success\",\"file\":\"cryptex-${TIMESTAMP}.tar.gz\",\"size\":\"$SIZE\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" >/dev/null 2>&1 || true
+curl -sf --max-time 10 -X POST "http://cryptex-n8n:5678/webhook/backup-status" -H "Content-Type: application/json" -d "{\"status\":\"success\",\"kopia\":\"$KOPIA_STATUS\",\"file\":\"cryptex-${TIMESTAMP}.tar.gz\",\"size\":\"$SIZE\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" >/dev/null 2>&1 || true
 
 echo "Pinging Uptime Kuma..."
-curl -sf "http://172.18.0.41:3001/api/push/backup-script-ping-2026?status=up&msg=Backup+Complete&ping=" >/dev/null 2>&1 || true
+if [ "$KOPIA_STATUS" = "failed" ]; then
+    curl -sf "http://172.18.0.41:3001/api/push/backup-script-ping-2026?status=down&msg=Kopia+offsite+snapshot+failed&ping=" >/dev/null 2>&1 || true
+else
+    curl -sf "http://172.18.0.41:3001/api/push/backup-script-ping-2026?status=up&msg=Backup+Complete&ping=" >/dev/null 2>&1 || true
+fi
 
 echo "Done."
