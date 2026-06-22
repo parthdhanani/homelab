@@ -84,7 +84,7 @@ echo ""
 # ── Stop running containers (except postgres — restore directly) ──
 
 echo "Stopping containers for restore..."
-docker compose stop moodle traxlrs n8n vaultwarden forgejo miniflux actualbudget obsidian 2>/dev/null || true
+docker compose stop moodle traxlrs n8n vaultwarden forgejo miniflux actualbudget uptime-kuma 2>/dev/null || true
 
 # ── Restore PostgreSQL ──
 
@@ -126,10 +126,10 @@ fi
 
 # ── Restore Vaultwarden ──
 
-if [ -f "${RESTORE_PATH}/vaultwarden.sqlite3" ]; then
+if [ -d "${RESTORE_PATH}/vaultwarden" ]; then
     echo "Restoring Vaultwarden..."
-    mkdir -p "${COMPOSE_DIR}/data/vaultwarden"
-    cp "${RESTORE_PATH}/vaultwarden.sqlite3" "${COMPOSE_DIR}/data/vaultwarden/db.sqlite3"
+    mkdir -p "${COMPOSE_DIR}/data"
+    cp -r "${RESTORE_PATH}/vaultwarden" "${COMPOSE_DIR}/data/vaultwarden"
     echo "  Vaultwarden: restored"
 fi
 
@@ -202,21 +202,16 @@ if [ -f "${RESTORE_PATH}/pkm.tar.gz" ]; then
     echo "  PKM: restored"
 fi
 
-# ── Restore rclone config (cloud OAuth tokens) ──
+# rclone.conf (OpenList cloud drive tokens) lives at ~/.config/rclone/rclone.conf on the
+# host, not under /opt/cryptex — not captured by backup.sh. Re-add drives manually after
+# restore (tracked as a pending OpenList reconfiguration item regardless).
 
-if [ -f "${RESTORE_PATH}/rclone.conf" ]; then
-    echo "Restoring rclone config (cloud tokens)..."
-    mkdir -p "${COMPOSE_DIR}/data/rclone/config"
-    cp "${RESTORE_PATH}/rclone.conf" "${COMPOSE_DIR}/data/rclone/config/rclone.conf"
-    echo "  rclone.conf: restored"
-fi
+# ── Restore Uptime Kuma (monitors, history, alerts) ──
 
-# ── Restore Obsidian config ──
-
-if [ -f "${RESTORE_PATH}/obsidian.tar.gz" ]; then
-    echo "Restoring Obsidian config..."
-    tar -xzf "${RESTORE_PATH}/obsidian.tar.gz" -C "${COMPOSE_DIR}/data/"
-    echo "  Obsidian config: restored (vault notes restored via pkm above)"
+if [ -f "${RESTORE_PATH}/uptime-kuma.tar.gz" ]; then
+    echo "Restoring Uptime Kuma..."
+    tar -xzf "${RESTORE_PATH}/uptime-kuma.tar.gz" -C "${COMPOSE_DIR}/data/"
+    echo "  Uptime Kuma: restored"
 fi
 
 # ── Restore SCORM import script ──

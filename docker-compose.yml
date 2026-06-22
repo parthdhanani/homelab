@@ -645,6 +645,11 @@ services:
       start_period: 15s
 
   # ── Uptime Kuma — Uptime monitoring + status page ────────────────────────
+  # NOTE: this container also runs a SECOND, independent Cloudflare Tunnel internally
+  # (Kuma's own built-in "Cloudflared Tunnel" feature, configured via its UI/DB — not
+  # this compose file). It uses its own separate tunnel token and is intentionally kept
+  # apart from the main `cloudflared` service above, so the status page stays reachable
+  # even if the main tunnel/nginx layer goes down. Do not consolidate into one tunnel.
   uptime-kuma:
     <<: *defaults
     image: louislam/uptime-kuma:2.3.2
