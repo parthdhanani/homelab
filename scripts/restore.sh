@@ -107,6 +107,23 @@ else
     echo "  WARNING: postgres_all.sql not found in backup — skipping DB restore"
 fi
 
+# ── Restore OB1 pgvector ──
+
+if [ -f "${RESTORE_PATH}/pgvector_ob1.sql" ]; then
+    echo "Restoring OB1 pgvector..."
+    DUMP_SIZE=$(wc -c < "${RESTORE_PATH}/pgvector_ob1.sql")
+    if [ "$DUMP_SIZE" -lt 1000 ]; then
+        echo "  ERROR: pgvector dump too small (${DUMP_SIZE} bytes) — skipping"
+    elif docker inspect cryptex-pgvector >/dev/null 2>&1; then
+        docker exec -i cryptex-pgvector psql -U ob1 ob1 < "${RESTORE_PATH}/pgvector_ob1.sql"
+        echo "  OB1 pgvector: restored"
+    else
+        echo "  WARNING: cryptex-pgvector container not found — skipping pgvector restore"
+    fi
+else
+    echo "  WARNING: pgvector_ob1.sql not found in backup — skipping OB1 memory restore"
+fi
+
 # ── Restore Vaultwarden ──
 
 if [ -f "${RESTORE_PATH}/vaultwarden.sqlite3" ]; then
