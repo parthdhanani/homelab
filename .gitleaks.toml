@@ -13,4 +13,6 @@ regexes = [
   '''YOUR_AUTH_TOKEN''',
   '''your_personal_api_key''',
   '''phx_your_personal_api_key''',
+  '''SCRUBBED_[A-Z_]+''',
+  '''PASTE_YOUR_[A-Z_]+''',
 ]
