@@ -669,6 +669,7 @@ services:
 
   # ── Umami — Web Analytics ────────────────────────────────────────────────
   umami:
+    profiles: ["disabled"]
     <<: *defaults
     image: ghcr.io/umami-software/umami@sha256:e3f80c0625aad7179b49da27d475357cabb1068b8cacd9a792cfd6966888b123  # no versioned tags; pin digest, update manually
     container_name: cryptex-umami
