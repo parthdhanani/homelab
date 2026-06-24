@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/home/ubuntu/AI_Space/wip/sb_tool
+WorkingDirectory=/home/ubuntu/AI_Space/complete/sb_tool
 ExecStart=/home/ubuntu/.local/bin/gunicorn app:app \
   --workers 4 \
   --worker-class gthread \

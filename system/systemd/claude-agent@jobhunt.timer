@@ -1,8 +1,8 @@
 [Unit]
-Description=claude-agent jobhunt (weekday role search)
+Description=claude-agent jobhunt (role search, 3x/week)
 
 [Timer]
-OnCalendar=Mon..Fri *-*-* 02:30:00
+OnCalendar=Mon,Wed,Fri *-*-* 02:30:00
 Persistent=true
 RandomizedDelaySec=120
 
