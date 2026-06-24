@@ -41,7 +41,8 @@ def already_indexed(conn, source: str) -> set[str]:
 
 def import_directory(root: Path, dry: bool = False):
     print(f"Scanning {root}...")
-    files = sorted(root.rglob("*.md"))
+    # Never embed the _Private/ tree (financial/personal notes) into the searchable index.
+    files = sorted(p for p in root.rglob("*.md") if "_Private" not in p.parts)
     print(f"Found {len(files)} markdown files.")
 
     if dry:
