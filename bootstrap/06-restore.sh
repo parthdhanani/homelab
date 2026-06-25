@@ -53,7 +53,7 @@ log "============ 06-restore: kopia restore ============"
 
 cd "$REPO_ROOT"
 
-KOPIA_IMAGE="kopia/kopia:0.22.3"
+KOPIA_IMAGE="kopia/kopia:0.23.1"
 KOPIA_CONFIG="$REPO_ROOT/data/kopia/config"
 KOPIA_CACHE="$REPO_ROOT/data/kopia/cache"
 STAGING_DIR="$REPO_ROOT/restore-staging"
@@ -96,7 +96,7 @@ docker run --rm \
   -v "$KOPIA_CONFIG:/app/config:ro" \
   -v "$KOPIA_CACHE:/app/cache" \
   -v "$STAGING_DIR:/restore" \
-  "$KOPIA_IMAGE" snapshot restore --shallow=0 "$SNAP" /restore
+  "$KOPIA_IMAGE" snapshot restore "$SNAP" /restore   # no --shallow: full restore (--shallow=0 writes .kopia-entry placeholders, breaking DR)
 
 RESTORED_ARCHIVE=$(ls -t "$STAGING_DIR"/cryptex-*.tar.gz 2>/dev/null | head -1)
 [ -n "$RESTORED_ARCHIVE" ] || fail "no cryptex-*.tar.gz found in restored snapshot at $STAGING_DIR — inspect manually"
