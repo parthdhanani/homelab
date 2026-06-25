@@ -128,9 +128,16 @@ fi
 
 if [ -d "${RESTORE_PATH}/vaultwarden" ]; then
     echo "Restoring Vaultwarden..."
-    mkdir -p "${COMPOSE_DIR}/data"
-    cp -r "${RESTORE_PATH}/vaultwarden" "${COMPOSE_DIR}/data/vaultwarden"
-    echo "  Vaultwarden: restored"
+    mkdir -p "${COMPOSE_DIR}/data/vaultwarden"
+    cp -r "${RESTORE_PATH}/vaultwarden/." "${COMPOSE_DIR}/data/vaultwarden/"
+    echo "  Vaultwarden: restored (db + keys + attachments)"
+elif [ -f "${RESTORE_PATH}/vaultwarden.sqlite3" ]; then
+    # Legacy backups stored only the bare DB file. Restore it so the vault isn't lost;
+    # rsa_key/attachments weren't captured in that format (re-login required after restore).
+    echo "Restoring Vaultwarden (legacy db-only backup)..."
+    mkdir -p "${COMPOSE_DIR}/data/vaultwarden"
+    cp "${RESTORE_PATH}/vaultwarden.sqlite3" "${COMPOSE_DIR}/data/vaultwarden/db.sqlite3"
+    echo "  Vaultwarden: db restored (legacy format — rsa_key/attachments not present)"
 fi
 
 # ── Restore Moodle data ──

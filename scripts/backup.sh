@@ -95,12 +95,19 @@ fi
 
 # Vaultwarden (safe SQLite backup via .backup command)
 echo "Backing up Vaultwarden..."
-if [ -f /opt/cryptex/data/vaultwarden/db.sqlite3 ]; then
-    sqlite3 /opt/cryptex/data/vaultwarden/db.sqlite3 ".backup '${BACKUP_PATH}/vaultwarden.sqlite3'"
-    echo "  vaultwarden.sqlite3"
-else
-    cp -r /opt/cryptex/data/vaultwarden "${BACKUP_PATH}/vaultwarden"
-    echo "  vaultwarden/ (directory copy)"
+# Produce a vaultwarden/ DIRECTORY (restore.sh expects a dir, not a bare .sqlite3 file).
+# db.sqlite3 via .backup = consistent hot copy (handles WAL); rsa_key = JWT signing,
+# attachments/sends/config = real user data. Without all of these the restore is incomplete.
+if [ -d /opt/cryptex/data/vaultwarden ]; then
+    mkdir -p "${BACKUP_PATH}/vaultwarden"
+    if [ -f /opt/cryptex/data/vaultwarden/db.sqlite3 ]; then
+        sqlite3 /opt/cryptex/data/vaultwarden/db.sqlite3 ".backup '${BACKUP_PATH}/vaultwarden/db.sqlite3'"
+    fi
+    for _vw in rsa_key.pem rsa_key.pub.pem config.json attachments sends; do
+        [ -e "/opt/cryptex/data/vaultwarden/${_vw}" ] \
+            && cp -r "/opt/cryptex/data/vaultwarden/${_vw}" "${BACKUP_PATH}/vaultwarden/"
+    done
+    echo "  vaultwarden/ (db + rsa_key + attachments + sends)"
 fi
 
 # n8n encryption keys (data is in PostgreSQL)
@@ -145,6 +152,7 @@ fi
 echo "Backing up Kopia config..."
 if [ -d /opt/cryptex/data/kopia/config ]; then
     cp -r /opt/cryptex/data/kopia/config "${BACKUP_PATH}/kopia-config" 2>/dev/null || true
+    rm -rf "${BACKUP_PATH}/kopia-config/logs" 2>/dev/null || true   # logs aren't config — ~100MB of noise
     echo "  kopia-config/ (B2 endpoint + repo password in stack-config.tar.gz .env)"
 fi
 
@@ -219,6 +227,10 @@ echo "Backing up stack config..."
 tar -czf "${BACKUP_PATH}/stack-config.tar.gz" \
     --exclude="cryptex/data" \
     --exclude="cryptex/backups" \
+    --exclude="cryptex/.git.local-backup-*" \
+    --exclude="cryptex/graphify-out" \
+    --exclude="cryptex/workspace" \
+    --exclude="cryptex/mcp" \
     --exclude="cryptex/dockerfiles/node_modules" \
     --exclude="cryptex/terraform/.terraform" \
     -C /opt cryptex \
