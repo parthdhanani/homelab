@@ -41,11 +41,12 @@ output "deployment_summary" {
 
     SSH:        ssh -i ~/.ssh/cryptex_vps ubuntu@${oci_core_instance.cryptex_server.public_ip}
 
-    Wait 5 minutes for cloud-init + reboot, then:
-      1. SSH in and verify: cat /var/log/cryptex-init.log
-      2. Run: ./scripts/transfer-to-vps.sh ${oci_core_instance.cryptex_server.public_ip}
-      3. SSH in, run: cd /opt/cryptex && ./scripts/setup-env.sh
-      4. Run: ./scripts/deploy.sh
+    Wait 5 minutes for cloud-init + reboot, then (canonical DR path — see bootstrap/README.md):
+      1. ssh ubuntu@${oci_core_instance.cryptex_server.public_ip}   # needs your GitHub SSH key
+      2. git clone git@github.com:parthdhanani/cryptex.git /opt/cryptex && cd /opt/cryptex
+      3. ./replicate.sh --skeleton-env && nano .env   # fill B2 + Kopia creds from key bundle
+      4. ./replicate.sh --skip-secrets                # system + stack
+      5. ./replicate.sh --restore                     # pull latest Kopia snapshot from B2
 
   EOT
 }

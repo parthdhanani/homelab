@@ -116,4 +116,21 @@ fi
 systemctl enable --quiet auditd || true
 systemctl start auditd 2>/dev/null || true
 
+# -------- code-review-graph (crg) --------
+# crg-daemon.service runs /home/ubuntu/.local/bin/crg-daemon — absent on a fresh
+# VPS unless we install it. PyPI package, pinned to match everything else.
+if sudo -u ubuntu test -x /home/ubuntu/.local/bin/crg-daemon; then
+  skip "code-review-graph already installed"
+else
+  ensure_apt python3-pip
+  ensure_apt python3-venv
+  log "installing code-review-graph (crg) via pipx"
+  if sudo -u ubuntu HOME=/home/ubuntu python3 -m pip install --user --quiet pipx >/dev/null 2>&1 \
+     && sudo -u ubuntu HOME=/home/ubuntu python3 -m pipx install 'code-review-graph==2.3.6' >/dev/null 2>&1; then
+    ok "code-review-graph installed"
+  else
+    warn "code-review-graph install failed — as ubuntu run: python3 -m pipx install 'code-review-graph==2.3.6'"
+  fi
+fi
+
 log "============ 00-system: complete ============"

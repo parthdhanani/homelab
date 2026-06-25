@@ -81,6 +81,20 @@ RESTORE_PATH=$(find "$RESTORE_TMP" -mindepth 1 -maxdepth 1 -type d | head -1)
 echo "  Extracted to: $RESTORE_PATH"
 echo ""
 
+# ── Restore the full .env from the snapshot ──
+# DR only needs a skeleton .env (B2 + Kopia creds) to PULL the snapshot; the
+# snapshot's dot-env is the complete 106-key .env. Apply it so the restarted
+# stack gets every secret, not just the bootstrap subset. (.env.pre-restore.bak
+# is gitignored.)
+if [ -f "${RESTORE_PATH}/dot-env" ]; then
+    echo "Restoring full .env from backup..."
+    cp "${COMPOSE_DIR}/.env" "${COMPOSE_DIR}/.env.pre-restore.bak" 2>/dev/null || true
+    cp "${RESTORE_PATH}/dot-env" "${COMPOSE_DIR}/.env"
+    # shellcheck disable=SC1090
+    source "${COMPOSE_DIR}/.env"
+    echo "  .env: restored full (skeleton saved to .env.pre-restore.bak)"
+fi
+
 # ── Stop running containers (except postgres — restore directly) ──
 
 echo "Stopping containers for restore..."
