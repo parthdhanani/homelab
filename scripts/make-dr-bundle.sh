@@ -15,8 +15,13 @@ mkdir -p "$B"
 
 echo "Collecting secrets..."
 cp /opt/cryptex/.env "$B/cryptex.env"
-cp /opt/cryptex/data/kopia/config/repository.config "$B/kopia-repository.config" 2>/dev/null \
-  || echo "  WARN: kopia repository.config not found"
+# repository.config is root:root 600 — needs sudo to read (regenerable from .env,
+# but include it so the bundle is fully self-contained).
+if sudo cp /opt/cryptex/data/kopia/config/repository.config "$B/kopia-repository.config" 2>/dev/null; then
+  sudo chown "$(id -u):$(id -g)" "$B/kopia-repository.config"
+else
+  echo "  WARN: kopia repository.config not readable (regenerable from .env on restore)"
+fi
 cp /home/ubuntu/AI_Space/important/github_key      "$B/github_key"     2>/dev/null \
   || echo "  WARN: github_key not found"
 cp /home/ubuntu/AI_Space/important/github_key.pub  "$B/github_key.pub" 2>/dev/null || true
