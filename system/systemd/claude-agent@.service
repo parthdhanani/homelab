@@ -1,0 +1,11 @@
+[Unit]
+Description=claude-agent: %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Environment=HOME=/home/ubuntu
+ExecStart=/home/ubuntu/claude-agents/run.sh %i
+TimeoutStartSec=900

@@ -1,0 +1,14 @@
+[Unit]
+Description=code-review-graph watch daemon — live code index for Claude Code
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Environment=PATH=/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/ubuntu/.local/bin/crg-daemon start --foreground
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

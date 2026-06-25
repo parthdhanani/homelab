@@ -1,0 +1,13 @@
+# watchlist.txt — semantic change monitor.  format:  URL | short label
+# One per line. '#' lines ignored. Claude only judges pages that actually changed.
+# Starter set for your field — add/remove freely. Prefer changelog/release/news pages.
+
+https://moodledev.io/general/releases | Moodle releases
+https://github.com/adlnet/xAPI-Spec/releases | xAPI spec releases
+https://www.w3.org/WAI/standards-guidelines/wcag/ | WCAG status
+https://docs.anthropic.com/en/release-notes/claude-code | Claude Code release notes
+https://blog.cloudflare.com/tag/cloudflare-tunnel/ | Cloudflare Tunnel news
+https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm | Oracle Cloud Always Free limits
+
+# --- APIs your tools depend on (early warning for breaking changes) ---
+# https://example.com/api/changelog | <dependency> changelog

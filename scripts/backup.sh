@@ -214,8 +214,16 @@ echo "  dot-env"
 echo "Syncing host configs into system/..."
 crontab -l > /opt/cryptex/system/cron/root.crontab 2>/dev/null || true
 cp /opt/cryptex/system/cron/root.crontab /opt/cryptex/system/crontab-root 2>/dev/null || true
-for u in sb-tool cryptex-terminal zellij-proxy zellij-web pkm-watcher iptables-save cryptex-graphify-update; do
-    cp "/etc/systemd/system/${u}.service" /opt/cryptex/system/systemd/ 2>/dev/null || true
+# Glob over all cryptex-owned unit prefixes rather than a hardcoded list — a stale
+# list is what silently dropped claude-agent@/crg-* from DR. Non-matching globs no-op.
+for f in /etc/systemd/system/sb-tool.service \
+         /etc/systemd/system/cryptex-*.service \
+         /etc/systemd/system/zellij-*.service \
+         /etc/systemd/system/*-watcher.service \
+         /etc/systemd/system/claude-agent@.service \
+         /etc/systemd/system/crg-*.service \
+         /etc/systemd/system/iptables-save.service; do
+    cp "$f" /opt/cryptex/system/systemd/ 2>/dev/null || true
 done
 cp /etc/systemd/system/*.timer /opt/cryptex/system/systemd/ 2>/dev/null || true
 cp /etc/nginx/sites-enabled/*.conf /opt/cryptex/system/nginx/sites-enabled/ 2>/dev/null || true

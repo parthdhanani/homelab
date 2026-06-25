@@ -1,0 +1,19 @@
+# news-topics.txt — tiered by relevance, ranked as ONE pool (not fixed per-tier quotas).
+# Tier 1 = directly relevant to your work/career. Tier 2 = general world context.
+# If Tier 1 is thin on a given day, Tier 2 fills the remaining slots — never padded to hit a count.
+# '#' lines ignored. Edit freely.
+
+[Stack & Career]
+EdTech/Learning Engineer job market and industry moves. SCORM/xAPI/cmi5/LMS ecosystem news.
+AI dev tooling relevant to JavaScript/Python/Docker/self-hosting. Anthropic/Claude product news
+beyond what the infra monitor already catches. Any mention of scorm-kit, xapi-doctor, storycraft,
+or courselint anywhere online.
+
+[World Context]
+Major geopolitics (Israel/Iran/Saudi developments weighted higher — genuine recurring interest,
+not generic coverage). Indian markets, RBI, economy, startups. Broader world tech industry moves
+(enterprise AI deals, policy) not already covered under Stack & Career.
+
+[Tech]
+Developer-facing tech: new dev tools, frameworks, language releases, open-source projects, product
+launches, notable gadgets/hardware. NOT enterprise AI deals or policy — that's World Context.

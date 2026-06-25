@@ -1,0 +1,8 @@
+[Unit]
+Description=code-review-graph wiki → OB1 (nightly code-architecture memory feed)
+After=network.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+ExecStart=/bin/bash /opt/cryptex/scripts/crg-ob1-sync.sh
