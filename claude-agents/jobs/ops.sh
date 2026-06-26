@@ -8,6 +8,12 @@ PROBLEMS=""
 # disk
 use=$(df / | awk 'NR==2{gsub(/%/,"",$5);print $5}')
 [ "$use" -ge 85 ] && PROBLEMS+="Disk at ${use}% on /"$'\n'
+# host memory pressure (A1 is memory-tight — RAM is the scarcest resource here)
+memuse=$(free | awk '/^Mem:/{printf "%d", $3/$2*100}')
+if [ "$memuse" -ge 85 ]; then
+    top3=$(docker stats --no-stream --format '{{.Name}} {{.MemUsage}}' 2>/dev/null | sort -k2 -h | tail -3 | tr '\n' ';')
+    PROBLEMS+="Host RAM at ${memuse}% (top: $top3)"$'\n'
+fi
 # failed units
 f=$(systemctl --failed --no-legend 2>/dev/null | awk '{print $1}' | tr '\n' ' ')
 [ -n "$f" ] && PROBLEMS+="Failed units: $f"$'\n'
