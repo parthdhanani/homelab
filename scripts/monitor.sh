@@ -62,7 +62,7 @@ fi
 
 # ── OB1 ───────────────────────────────────────────────────────────────────────
 hdr "TOOLING"
-OB1_RESP=$(curl -sf --max-time 2 http://172.18.0.52:8000/health 2>/dev/null)
+OB1_RESP=$(curl -sf --max-time 8 http://172.18.0.52:8000/health 2>/dev/null)
 if [ -n "$OB1_RESP" ]; then
     MEM_COUNT=$(echo "$OB1_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('memories','?'))" 2>/dev/null)
     ok "OB1  ($MEM_COUNT memories)"
