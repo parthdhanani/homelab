@@ -46,6 +46,32 @@ RULES = [
 ]
 
 COMMENT = re.compile(r"<!--.*?-->|\{/\*.*?\*/\}", re.S)
+HEX = re.compile(r"#[0-9a-fA-F]{3,8}\b")
+_ramp_cache = {}
+
+
+def project_ramp(path):
+    """Nearest DESIGN.md walking up from path -> its allowed hex set (lowercased),
+    or None if no DESIGN.md exists (token enforcement is opt-in per project)."""
+    d = os.path.dirname(os.path.abspath(path))
+    if d in _ramp_cache:
+        return _ramp_cache[d]
+    cur, ramp = d, None
+    while True:
+        cand = os.path.join(cur, "DESIGN.md")
+        if os.path.isfile(cand):
+            try:
+                with open(cand, encoding="utf-8", errors="replace") as fh:
+                    ramp = {h.lower() for h in HEX.findall(fh.read())}
+            except OSError:
+                ramp = None
+            break
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            break
+        cur = parent
+    _ramp_cache[d] = ramp
+    return ramp
 
 
 def scan(path):
@@ -56,11 +82,18 @@ def scan(path):
         return []
     # Blank out comments so our own annotations are not flagged (keep line count)
     cleaned = COMMENT.sub(lambda m: re.sub(r"[^\n]", " ", m.group()), raw)
+    ramp = project_ramp(path)
     out = []
     for n, line in enumerate(cleaned.splitlines(), 1):
         for sev, label, rx, hint in RULES:
             if rx.search(line):
                 out.append((sev, label, n, hint))
+        if ramp is not None:
+            for hx in HEX.findall(line):
+                if hx.lower() not in ramp:
+                    out.append(("HIGH", "off-ramp-color", n,
+                                f"{hx} is not in this project's DESIGN.md ramp. "
+                                "Use a var() token, or add it to DESIGN.md first."))
     return out
 
 
