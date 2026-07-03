@@ -122,7 +122,7 @@ svc_check "umami"        check_health "Umami"       cryptex-umami
 
 echo ""
 echo "Utilities:"
-check_host "Zellij"       "curl -sf http://127.0.0.1:8082/"
+check_host "cryptex-terminal" "curl -sf http://127.0.0.1:8085/"
 svc_check "forgejo"       check        "Forgejo"      cryptex-forgejo      "curl -fsS -o /dev/null http://127.0.0.1:3000/"
 svc_check "miniflux"      check_health "Miniflux"     cryptex-miniflux
 svc_check "actualbudget"  check        "ActualBudget" cryptex-actualbudget "node -e \"require('http').get('http://127.0.0.1:5006/',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))\""

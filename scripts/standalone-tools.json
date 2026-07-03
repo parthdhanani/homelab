@@ -1,15 +1,5 @@
 [
   {
-    "name": "zellij",
-    "repo": "zellij-org/zellij",
-    "asset_pattern": "aarch64-unknown-linux-musl.tar.gz",
-    "binary_in_archive": "zellij",
-    "install_path": "/usr/local/bin/zellij",
-    "version_cmd": "zellij --version",
-    "version_strip": "zellij ",
-    "note": "may be hosting current session — binary swap applies on next launch"
-  },
-  {
     "name": "starship",
     "repo": "starship-rs/starship",
     "asset_pattern": "aarch64-unknown-linux-musl.tar.gz",

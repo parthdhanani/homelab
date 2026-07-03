@@ -17,23 +17,11 @@ UNITS=(
   cryptex-graphify-update.timer
 )
 
-# Conditional units (only if zellij is intended)
-OPTIONAL_UNITS=(
-  zellij-web.service
-  zellij-proxy.service
-)
-
 for u in "${UNITS[@]}"; do
   if [ -f "$REPO_ROOT/system/systemd/$u" ]; then
     ensure_systemd_unit "$u"
   else
     warn "missing source for $u — skipping"
-  fi
-done
-
-for u in "${OPTIONAL_UNITS[@]}"; do
-  if [ -f "$REPO_ROOT/system/systemd/$u" ]; then
-    ensure_systemd_unit "$u"
   fi
 done
 

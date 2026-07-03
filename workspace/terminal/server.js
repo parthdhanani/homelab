@@ -6,7 +6,7 @@ const path = require('path');
 
 const PORT = parseInt(process.env.PORT || '8085', 10);
 const HOST = process.env.HOST || '127.0.0.1';
-const CMD = process.env.TERM_CMD || '/opt/cryptex/workspace/terminal/zellij-session.sh';
+const CMD = process.env.TERM_CMD || '/opt/cryptex/workspace/terminal/herdr-session.sh';
 const CMD_ARGS = (process.env.TERM_ARGS || '').split(' ').filter(Boolean);
 
 const app = express();

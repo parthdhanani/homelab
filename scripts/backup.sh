@@ -218,7 +218,6 @@ cp /opt/cryptex/system/cron/root.crontab /opt/cryptex/system/crontab-root 2>/dev
 # list is what silently dropped claude-agent@/crg-* from DR. Non-matching globs no-op.
 for f in /etc/systemd/system/sb-tool.service \
          /etc/systemd/system/cryptex-*.service \
-         /etc/systemd/system/zellij-*.service \
          /etc/systemd/system/*-watcher.service \
          /etc/systemd/system/claude-agent@.service \
          /etc/systemd/system/crg-*.service \
