@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 01-systemd.sh — install custom systemd units for cryptex/PKM/zellij/iptables-save
+# 01-systemd.sh — install custom systemd units for cryptex/PKM/iptables-save
 # Idempotent.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

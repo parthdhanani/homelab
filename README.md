@@ -30,7 +30,7 @@ See [`bootstrap/README.md`](bootstrap/README.md) for the phase-by-phase referenc
 | `bootstrap/` | Phased scripts (`00-system` → `06-restore`) — each independently re-runnable |
 | `system/` | Captured host state: iptables, systemd units, nginx, fail2ban, cron, packages, sysctl |
 | `dotfiles/` | `~/.claude` (skills, hooks, commands, agents) + shell rc files |
-| `configs/` | Per-service config (nginx, postgres init, pgbouncer, adguard, moodle, n8n workflows, zellij, …) |
+| `configs/` | Per-service config (nginx, postgres init, pgbouncer, adguard, moodle, n8n workflows, …) |
 | `scripts/` | Operational scripts: backup, watchdog, health-check, container-update-notify, … |
 | `dockerfiles/` | Custom images (moodle, traxlrs, portfolio, …) |
 | `terraform/` | Oracle Cloud infra (optional) |

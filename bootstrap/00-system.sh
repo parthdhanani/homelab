@@ -99,7 +99,7 @@ systemctl enable --quiet fail2ban
 systemctl restart fail2ban || warn "fail2ban restart failed"
 ok "fail2ban configured"
 
-# -------- nginx (host, for non-tunneled local proxies like zellij/code-server) --------
+# -------- nginx (host, for non-tunneled local proxies like cryptex-terminal/code-server) --------
 if [ -d "$REPO_ROOT/system/nginx/sites-enabled" ]; then
   for f in "$REPO_ROOT/system/nginx/sites-enabled"/*; do
     [ -f "$f" ] && install_file "$f" "/etc/nginx/sites-enabled/$(basename "$f")" 644 root:root
