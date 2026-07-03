@@ -1167,6 +1167,28 @@ services:
       retries: 3
       start_period: 15s
 
+  # ── YT Zero — Self-hosted YouTube subscriptions reader (no API key, RSS-based) ──
+  ytzero:
+    <<: *defaults
+    image: ghcr.io/pelski/ytzero:latest
+    container_name: cryptex-ytzero
+    networks:
+      cryptex_net:
+        ipv4_address: 172.18.0.53
+    volumes:
+      - /opt/cryptex/data/ytzero:/data
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.25"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3001/', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
 volumes:
   redis_data:
   n8n_tools:
