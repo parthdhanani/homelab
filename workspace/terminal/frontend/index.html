@@ -53,6 +53,23 @@
     #terminal canvas {
       touch-action: none;
     }
+    /* ghostty-web's hidden input textarea sits at the top-left to capture
+       keystrokes. opacity:0 hides the element but iOS/Safari still draws the
+       native blinking caret of a focused input at the compositor level — that
+       was the stray blinking white line on the left edge. The terminal draws
+       its own cursor; the native one must never show. */
+    #terminal textarea, textarea {
+      caret-color: transparent !important;
+      color: transparent !important;
+      text-shadow: none !important;
+    }
+    /* ghostty-web also makes the #terminal div itself contenteditable and
+       focuses it on desktop — a focused contenteditable draws its own blinking
+       caret (near-white, at the element's left edge) in desktop browsers.
+       Same symptom as the iOS textarea caret, different element. */
+    #terminal, #terminal * {
+      caret-color: transparent !important;
+    }
 
     /* Mobile toolbar */
     #mobile-toolbar {
@@ -111,7 +128,7 @@
   <div id="statusbar">
     <span><span class="dot disconnected" id="dot"></span><span id="status">Connecting…</span></span>
     <span class="right">
-      <span id="session-label">zellij</span>
+      <span id="session-label">herdr</span>
       <span id="size-label">—</span>
     </span>
   </div>
@@ -121,33 +138,42 @@
   </div>
 
   <div id="mobile-toolbar">
-    <div class="toolbar-row">
-      <button class="tk enter" data-send="enter">⏎</button>
+    <!-- Shown only when a numbered menu (e.g. permission prompt "1. Yes / 2. Yes, allow all / 3. No") is on screen -->
+    <div class="toolbar-row" id="tk-group-numbered" style="display:none;">
       <button class="tk confirm" data-send="1-enter">1 ↵</button>
       <button class="tk" data-send="2-enter" style="background:#1a2233;border-color:#bc8cff66;color:#bc8cff;">2 ↵</button>
       <button class="tk danger" data-send="3-enter">3 ↵</button>
+    </div>
+    <!-- Shown only when a plain y/n prompt is on screen -->
+    <div class="toolbar-row" id="tk-group-yesno" style="display:none;">
       <button class="tk confirm" data-send="y-enter">y ↵</button>
       <button class="tk danger" data-send="n-enter">n ↵</button>
+    </div>
+    <!-- Always useful, kept minimal -->
+    <div class="toolbar-row" id="tk-group-default">
+      <button class="tk enter" data-send="enter">⏎</button>
       <button class="tk mod" data-send="ctrl-c">^C</button>
-      <button class="tk mod" data-send="ctrl-z">^Z</button>
-      <button class="tk mod" data-send="ctrl-d">^D</button>
       <button class="tk" data-send="esc">Esc</button>
       <button class="tk" data-send="tab">Tab</button>
       <button class="tk" data-send="up">↑</button>
       <button class="tk" data-send="down">↓</button>
       <button class="tk" data-send="left">←</button>
       <button class="tk" data-send="right">→</button>
+      <button class="tk" id="tk-more-toggle">more</button>
+    </div>
+    <!-- Hidden by default, expand via "more" — the rarely-needed extras -->
+    <div class="toolbar-row" id="tk-group-extra" style="display:none;">
+      <button class="tk mod" data-send="ctrl-z">^Z</button>
+      <button class="tk mod" data-send="ctrl-d">^D</button>
+      <button class="tk mod" data-send="ctrl-a">^A</button>
+      <button class="tk mod" data-send="ctrl-e">^E</button>
+      <button class="tk mod" data-send="ctrl-l">^L</button>
       <button class="tk" data-literal="|">|</button>
       <button class="tk" data-literal="~">~</button>
       <button class="tk" data-literal="/">/ </button>
       <button class="tk" data-literal="#">#</button>
       <button class="tk" data-literal="$">$</button>
-      <button class="tk" data-literal=" - "> - </button>
       <button class="tk" data-literal="--">--</button>
-      <button class="tk mod" data-send="ctrl-a">^A</button>
-      <button class="tk mod" data-send="ctrl-e">^E</button>
-      <button class="tk mod" data-send="ctrl-l">^L</button>
-      <button class="tk danger" data-send="ctrl-c">kill</button>
     </div>
   </div>
 

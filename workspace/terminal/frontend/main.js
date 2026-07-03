@@ -1,6 +1,15 @@
 import { init, Terminal } from 'ghostty-web';
+// Self-hosted JetBrains Mono — without this the CSS font stack silently fell
+// back to the browser's generic monospace (no webfont was ever loaded).
+import '@fontsource/jetbrains-mono/400.css';
+import '@fontsource/jetbrains-mono/700.css';
 
 await init();
+
+// Canvas text is measured at font-load time; make sure the webfont is really
+// available before the terminal takes its cell metrics, otherwise it renders
+// (and measures) the fallback font instead.
+await document.fonts.load('14px "JetBrains Mono"').catch(() => {});
 
 const isMobile = window.matchMedia('(hover: none) and (pointer: coarse)').matches
   || window.innerWidth <= 768;
@@ -41,26 +50,48 @@ const dot = document.getElementById('dot');
 const statusEl = document.getElementById('status');
 const sizeEl = document.getElementById('size-label');
 
+function getCellMetrics() {
+  return term.renderer?.metrics ?? null;
+}
+
+// herdr switches to its proper single-column mobile layout only when the
+// terminal is <= mobile_width_threshold columns (64 by default, see
+// ~/.config/herdr/config.toml). Forcing a minimum of 80 cols on mobile (the
+// old fallback did this) guarantees herdr never sees a narrow terminal and
+// tries to render the full desktop sidebar+pane layout on a phone screen —
+// that's what "sidebar and things are lost" was.
+const MOBILE_COLS_CAP = 56; // comfortably under the 64-col threshold
+
 function fitTerm() {
   const wrapper = document.getElementById('terminal-wrapper');
   const rect = wrapper.getBoundingClientRect();
-  // ghostty-web: measure cell size from a test render
-  const cellWidth = term._core ? term._core._renderService?.dimensions?.css?.cell?.width : null;
-  const cellHeight = term._core ? term._core._renderService?.dimensions?.css?.cell?.height : null;
-  if (cellWidth && cellHeight) {
-    const cols = Math.floor(rect.width / cellWidth);
-    const rows = Math.floor(rect.height / cellHeight);
+  const cell = getCellMetrics();
+  if (cell && cell.width && cell.height) {
+    let cols = Math.floor(rect.width / cell.width);
+    const rows = Math.floor(rect.height / cell.height);
+    if (isMobile) cols = Math.min(cols, MOBILE_COLS_CAP);
     term.resize(cols, rows);
     sizeEl.textContent = `${cols}×${rows}`;
     return { cols, rows };
   }
-  // Fallback: estimate from font size
+  // Fallback: estimate from font size — corrected once real metrics are ready (see waitForRealMetrics)
   const fontSize = isMobile ? 13 : 14;
-  const cols = Math.floor(rect.width / (fontSize * 0.6));
+  let cols = Math.floor(rect.width / (fontSize * 0.6));
   const rows = Math.floor(rect.height / (fontSize * 1.2));
-  term.resize(Math.max(cols, 80), Math.max(rows, 24));
+  cols = isMobile ? Math.min(Math.max(cols, 40), MOBILE_COLS_CAP) : Math.max(cols, 80);
+  term.resize(cols, Math.max(rows, 24));
   sizeEl.textContent = `${cols}×${rows}`;
-  return { cols: Math.max(cols, 80), rows: Math.max(rows, 24) };
+  return { cols, rows: Math.max(rows, 24) };
+}
+
+// The fallback size estimate above is a guess and is usually wrong (leaves
+// blank space or misjudges rows/cols). Poll for real cell metrics after
+// open() and re-fit + re-send the corrected size once they're available.
+function waitForRealMetrics(onReady, attempts = 0) {
+  const cell = getCellMetrics();
+  if (cell && cell.width && cell.height) { onReady(); return; }
+  if (attempts > 40) return; // ~2s ceiling, give up quietly
+  requestAnimationFrame(() => waitForRealMetrics(onReady, attempts + 1));
 }
 
 // WebSocket connection
@@ -71,9 +102,22 @@ ws.binaryType = 'arraybuffer';
 ws.onopen = () => {
   dot.className = 'dot';
   statusEl.textContent = 'Connected';
-  // Send initial size
+  // Send initial (possibly rough) size immediately so the PTY isn't left unsized
   const { cols, rows } = fitTerm();
   ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+  // Correct it once ghostty-web has real font-cell metrics — fixes the
+  // undersized-terminal/blank-space-at-bottom issue on first load.
+  waitForRealMetrics(() => {
+    const fitted = fitTerm();
+    ws.send(JSON.stringify({ type: 'resize', cols: fitted.cols, rows: fitted.rows }));
+  });
+  // Fonts loading late can also shift cell metrics; re-fit once more after that.
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => {
+      const fitted = fitTerm();
+      ws.send(JSON.stringify({ type: 'resize', cols: fitted.cols, rows: fitted.rows }));
+    });
+  }
 };
 
 ws.onclose = () => {
@@ -86,12 +130,30 @@ ws.onerror = () => {
   statusEl.textContent = 'Connection error';
 };
 
+// Rolling plain-text tail of recent output (ANSI stripped) — used to detect
+// what kind of prompt is currently on screen, so the mobile toolbar can show
+// only the buttons that are actually relevant instead of a static wall of 24.
+const ANSI_RE = /\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]|\r/g;
+let recentText = '';
+const RECENT_TEXT_MAX = 4000;
+
+function appendRecentText(chunk) {
+  recentText = (recentText + chunk).replace(ANSI_RE, '');
+  if (recentText.length > RECENT_TEXT_MAX) {
+    recentText = recentText.slice(-RECENT_TEXT_MAX);
+  }
+}
+
 ws.onmessage = (e) => {
   if (e.data instanceof ArrayBuffer) {
-    term.write(new Uint8Array(e.data));
+    const bytes = new Uint8Array(e.data);
+    term.write(bytes);
+    appendRecentText(new TextDecoder('utf-8', { fatal: false }).decode(bytes));
   } else {
     term.write(e.data);
+    appendRecentText(e.data);
   }
+  updateToolbarContext();
 };
 
 term.onData((data) => {
@@ -151,16 +213,126 @@ document.getElementById('mobile-toolbar').addEventListener('click', (e) => {
   }
 });
 
+// Context-aware toolbar: instead of always showing every button, look at the
+// last few lines of actual output and show only what's relevant right now.
+const toolbarGroups = {
+  numbered: document.getElementById('tk-group-numbered'),
+  yesno: document.getElementById('tk-group-yesno'),
+  default: document.getElementById('tk-group-default'),
+  extra: document.getElementById('tk-group-extra'),
+};
+let extraExpanded = false;
+
+function lastNonEmptyLines(text, n) {
+  return text.split('\n').filter((l) => l.trim().length > 0).slice(-n);
+}
+
+function updateToolbarContext() {
+  const tail = lastNonEmptyLines(recentText, 8);
+  const tailJoined = tail.join('\n');
+
+  const hasNumberedMenu = /(?:^|\n)\s*[❯>]?\s*[1-3]\.\s*\S/.test(tailJoined)
+    && /(?:^|\n)\s*[1-3]\.\s*\S/.test(tailJoined);
+  const hasYesNo = /\(y\/n\)|\[y\/n\]|yes\/no/i.test(tailJoined);
+
+  toolbarGroups.numbered.style.display = hasNumberedMenu ? 'flex' : 'none';
+  toolbarGroups.yesno.style.display = (!hasNumberedMenu && hasYesNo) ? 'flex' : 'none';
+  toolbarGroups.default.style.display = 'flex'; // Enter/Esc/Ctrl-C/arrows: always useful
+  toolbarGroups.extra.style.display = extraExpanded ? 'flex' : 'none';
+}
+
+document.getElementById('tk-more-toggle').addEventListener('click', () => {
+  extraExpanded = !extraExpanded;
+  toolbarGroups.extra.style.display = extraExpanded ? 'flex' : 'none';
+});
+
+updateToolbarContext();
+
+// Mouse click/wheel forwarding (SGR mouse protocol) — herdr's own sidebar/tab
+// clicks rely on the app receiving real mouse reports, which ghostty-web's
+// canvas never sent on its own (it only handles browser-side text selection).
+function pixelToCellCoords(clientX, clientY) {
+  const cell = getCellMetrics();
+  const termEl = document.getElementById('terminal');
+  if (!cell || !cell.width || !cell.height) return null;
+  const rect = termEl.getBoundingClientRect();
+  const col = Math.floor((clientX - rect.left) / cell.width) + 1;
+  const row = Math.floor((clientY - rect.top) / cell.height) + 1;
+  return { col: Math.max(1, col), row: Math.max(1, row) };
+}
+
+function sendSgrMouse(button, clientX, clientY, isRelease) {
+  if (!term.hasMouseTracking || !term.hasMouseTracking()) return;
+  const pos = pixelToCellCoords(clientX, clientY);
+  if (!pos) return;
+  const suffix = isRelease ? 'm' : 'M';
+  const seq = `\x1b[<${button};${pos.col};${pos.row}${suffix}`;
+  if (ws.readyState === WebSocket.OPEN) ws.send(seq);
+}
+
+const termCanvasHost = document.getElementById('terminal');
+termCanvasHost.addEventListener('mousedown', (e) => {
+  const btn = e.button === 2 ? 2 : e.button === 1 ? 1 : 0;
+  sendSgrMouse(btn, e.clientX, e.clientY, false);
+});
+termCanvasHost.addEventListener('mouseup', (e) => {
+  const btn = e.button === 2 ? 2 : e.button === 1 ? 1 : 0;
+  sendSgrMouse(btn, e.clientX, e.clientY, true);
+});
+// ghostty-web registers its own wheel handler directly on the canvas in the
+// capture phase, and when the focused app hasn't enabled mouse tracking
+// (Claude Code doesn't), it auto-translates wheel scroll into arrow-key
+// sequences. Claude Code doesn't treat arrow keys as scroll — it wants Page
+// Up/Down, which most Mac keyboards have no dedicated key for. Intercept the
+// wheel event on `document` in the capture phase (fires before any listener
+// on the canvas itself, since capture goes root -> target) and send real
+// PageUp/PageDown sequences instead, stopping ghostty-web's own handler from
+// also firing.
+let wheelAccum = 0;
+const WHEEL_PAGE_THRESHOLD = 120; // px of scroll before firing one PageUp/PageDown
+document.addEventListener('wheel', (e) => {
+  if (!termCanvasHost.contains(e.target)) return;
+  if (term.hasMouseTracking && term.hasMouseTracking()) {
+    // App wants real mouse reports (e.g. herdr's own sidebar) — use SGR wheel.
+    sendSgrMouse(e.deltaY < 0 ? 64 : 65, e.clientX, e.clientY, false);
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+  wheelAccum += e.deltaY;
+  if (Math.abs(wheelAccum) >= WHEEL_PAGE_THRESHOLD) {
+    const seq = wheelAccum < 0 ? '\x1b[5~' : '\x1b[6~'; // Page Up / Page Down
+    if (ws.readyState === WebSocket.OPEN) ws.send(seq);
+    wheelAccum = 0;
+  }
+  e.preventDefault();
+  e.stopPropagation();
+}, { passive: false, capture: true });
 // Touch scroll on terminal canvas
 let touchStartY = 0;
+let touchTotalMove = 0;
 document.getElementById('terminal').addEventListener('touchstart', (e) => {
   touchStartY = e.touches[0].clientY;
+  touchTotalMove = 0;
 }, { passive: true });
 document.getElementById('terminal').addEventListener('touchmove', (e) => {
   const dy = touchStartY - e.touches[0].clientY;
+  touchTotalMove += Math.abs(dy);
   touchStartY = e.touches[0].clientY;
   term.scrollLines(Math.round(dy / 20));
 }, { passive: true });
+
+// Taps count as clicks for touch devices too (tap-to-focus sidebar entries
+// etc.) — but only if the touch didn't turn into a scroll drag.
+const TAP_DRAG_THRESHOLD_PX = 8;
+termCanvasHost.addEventListener('touchend', (e) => {
+  if (touchTotalMove > TAP_DRAG_THRESHOLD_PX) return;
+  if (!term.hasMouseTracking || !term.hasMouseTracking()) return;
+  const t = e.changedTouches[0];
+  if (!t) return;
+  sendSgrMouse(0, t.clientX, t.clientY, false);
+  sendSgrMouse(0, t.clientX, t.clientY, true);
+});
 
 // Focus terminal on load
 setTimeout(() => term.focus(), 100);
