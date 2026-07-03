@@ -225,28 +225,6 @@ USERLIST
 chmod 644 "${PGBOUNCER_CONF_DIR}/userlist.txt"
 echo "  userlist.txt generated (7 users, scram-sha-256)"
 
-# ── Install Zellij web terminal (host service, not a container) ──
-# Replaces HolyClaude. Runs as ubuntu user, proxied via socat for cloudflared access.
-# Idempotent: skips if already installed at correct version.
-
-echo "Setting up Zellij web terminal..."
-ZELLIJ_VER="v0.44.0"
-ZELLIJ_BIN="/usr/local/bin/zellij"
-
-if [ ! -f "$ZELLIJ_BIN" ] || [ "$($ZELLIJ_BIN --version 2>/dev/null | awk '{print $2}')" != "${ZELLIJ_VER#v}" ]; then
-    echo "  Installing Zellij ${ZELLIJ_VER}..."
-    cd /tmp
-    wget -q "https://github.com/zellij-org/zellij/releases/download/${ZELLIJ_VER}/zellij-aarch64-unknown-linux-musl.tar.gz" -O zellij.tar.gz
-    tar xzf zellij.tar.gz
-    sudo mv zellij "$ZELLIJ_BIN"
-    sudo chmod +x "$ZELLIJ_BIN"
-    rm -f zellij.tar.gz
-    cd "$COMPOSE_DIR"
-    echo "  Zellij installed: $($ZELLIJ_BIN --version)"
-else
-    echo "  Zellij already at ${ZELLIJ_VER} — skipping"
-fi
-
 # Install shell tools (idempotent via apt)
 echo "  Installing shell tools..."
 sudo apt-get install -y -q fzf ripgrep bat fd-find jq socat unzip 2>/dev/null | tail -1
@@ -310,26 +288,6 @@ alias dps='docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}"'
 alias health='/opt/cryptex/scripts/health-check.sh'
 alias notes-build='docker run --rm -v /opt/cryptex/data/pkm:/vault:ro -v /opt/cryptex/data/quartz-output:/output -v /opt/cryptex/data/quartz-app:/app -w /app node:22-alpine sh -c "npx quartz build --directory /vault --output /output"'
 SHELLENV
-
-# Zellij config + Zellaude plugin
-mkdir -p /home/ubuntu/.config/zellij/{layouts,plugins}
-if [ ! -f /home/ubuntu/.config/zellij/plugins/zellaude.wasm ]; then
-    echo "  Downloading Zellaude plugin..."
-    wget -q 'https://github.com/ishefi/zellaude/releases/latest/download/zellaude.wasm' \
-        -O /home/ubuntu/.config/zellij/plugins/zellaude.wasm
-fi
-
-# Copy zellij configs from repo
-cp "${COMPOSE_DIR}/configs/zellij/config.kdl"  /home/ubuntu/.config/zellij/config.kdl
-cp "${COMPOSE_DIR}/configs/zellij/main.kdl"     /home/ubuntu/.config/zellij/layouts/main.kdl
-
-# Install systemd services (idempotent)
-sudo cp "${COMPOSE_DIR}/configs/systemd/zellij-web.service"   /etc/systemd/system/zellij-web.service
-sudo cp "${COMPOSE_DIR}/configs/systemd/zellij-proxy.service" /etc/systemd/system/zellij-proxy.service
-sudo systemctl daemon-reload
-sudo systemctl enable zellij-web zellij-proxy
-sudo systemctl restart zellij-web zellij-proxy
-echo "  Zellij web: $(sudo systemctl is-active zellij-web) | proxy: $(sudo systemctl is-active zellij-proxy)"
 
 # ── Build custom images ──
 
@@ -947,7 +905,6 @@ echo "dns.${DOMAIN}           → http://cryptex-adguard:80"
 echo "monitor.${DOMAIN}       → http://cryptex-tianji:12345"
 echo "status.${DOMAIN}        → http://cryptex-tianji:12345"
 echo "backup.${DOMAIN}        → http://cryptex-kopia:51515"
-echo "code.${DOMAIN}          → http://localhost:8082  (Zellij web — host service, not container)"
 echo "logs.${DOMAIN}          → http://cryptex-dozzle:8080"
 echo "git.${DOMAIN}           → http://cryptex-forgejo:3000"
 echo "news.${DOMAIN}          → http://cryptex-miniflux:8080"
@@ -1032,9 +989,6 @@ echo ""
 echo "3. Authenticate Gemini CLI:"
 echo "   gemini"
 echo "   (follow the Google auth flow)"
-echo ""
-echo "Zellij web token (save this — cannot be retrieved later):"
-echo "  Run: zellij web --create-token --token-name mydevice"
 echo ""
 
 echo "════════════════════════════════════════════════════"
@@ -1123,7 +1077,6 @@ svc_enabled "tailscale" && echo "  [ ] Tailscale — approve subnet 172.18.0.0/1
 svc_enabled "tailscale" && echo "      https://login.tailscale.com/admin/machines"
 echo "  [ ] Claude Code — open https://code.${DOMAIN}, run 'claude' to auth"
 echo "  [ ] Gemini CLI  — run 'gemini' to auth at same terminal"
-echo "  [ ] Zellij token — run: zellij web --create-token --token-name mydevice"
 svc_enabled "vaultwarden" && echo "  [ ] Vaultwarden — register at https://vault.${DOMAIN}/register"
 svc_enabled "vaultwarden" && echo "      then run: ./scripts/disable-signups.sh"
 svc_enabled "actualbudget" && echo "  [ ] ActualBudget — visit https://budget.${DOMAIN}, set password: ${ACTUALBUDGET_PASSWORD}"
