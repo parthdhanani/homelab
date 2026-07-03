@@ -603,17 +603,14 @@ services:
 
   # 16. [REMOVED] DIUN — replaced by Dockhand
 
-  # 17. [REMOVED] HolyClaude replaced by Zellij host install
-  # Zellij runs as a systemd service on the host (not a container)
-  # Service: /etc/systemd/system/zellij-web.service → port 8082
-  # Tools: Claude Code + Gemini CLI + yazi + zoxide + starship + fzf + ripgrep + bat + fd
-  # Auth: Zellij token (run: zellij web --create-token)
-  # Config: /home/ubuntu/.config/zellij/
-  # Zellaude plugin: /home/ubuntu/.config/zellij/plugins/zellaude.wasm
-  # Access: code.psidex.com → Cloudflare Tunnel → localhost:8082
-  # Update Zellij: wget new binary from github.com/zellij-org/zellij/releases → replace /usr/local/bin/zellij → sudo systemctl restart zellij-web
+  # 17. [REMOVED] HolyClaude, then Zellij host install — replaced by herdr (2026-07-02)
+  # cryptex-terminal (ghostty-web) runs as a systemd service on the host (not a container)
+  # Service: /etc/systemd/system/cryptex-terminal.service → port 8085, launches herdr-session.sh
+  # Multiplexer: herdr (~/.local/bin/herdr) — Claude Code integration installed via `herdr integration install claude`
+  # Config: /opt/cryptex/workspace/terminal/ (frontend + server.js), ~/.config/herdr/
+  # Access: term.psidex.com → Cloudflare Tunnel → 172.18.0.1:8085 → 127.0.0.1:8085
   # Update Claude Code: sudo npm update -g @anthropic-ai/claude-code
-  # Update Gemini CLI: sudo npm update -g @google/gemini-cli
+  # Update herdr: herdr update
 
   # 18. [REMOVED] Dozzle — replaced by Dockhand
 
