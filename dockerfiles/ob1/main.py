@@ -4,6 +4,11 @@ Semantic memory over PKM vault + session summaries via fastembed + pgvector.
 
 MCP tools (for Claude Code):  POST /mcp
 REST API (for bash hooks):     POST /api/remember  GET /api/search  GET /health
+
+Originated as a fork of NateBJones-Projects/OB1 (github.com/NateBJones-Projects/OB1,
+FSL-1.1-MIT, Copyright Nate B. Jones) — a Supabase+Deno "Open Brain" memory platform.
+This version has since been fully rewritten to a standalone Python/FastAPI/pgvector
+service with no shared code, for personal/internal use only (FSL's Permitted Purpose).
 """
 
 import json
