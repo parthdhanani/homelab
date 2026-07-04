@@ -9,6 +9,7 @@ REST API (for bash hooks):     POST /api/remember  GET /api/search  GET /health
 import json
 import logging
 import os
+import re
 import threading
 from contextlib import asynccontextmanager
 
@@ -35,6 +36,7 @@ DB_CONFIG = {
 
 MODEL_NAME = "nomic-ai/nomic-embed-text-v1.5"
 EMBED_DIM = 768
+DEDUP_THRESHOLD = float(os.environ.get("OB1_DEDUP_THRESHOLD", 0.97))
 
 # ── Globals (initialized at startup) ─────────────────────────────────────────
 
@@ -84,14 +86,21 @@ def init_db():
                 tags      TEXT[] DEFAULT '{{}}',
                 embedding vector({EMBED_DIM}),
                 created_at TIMESTAMPTZ DEFAULT NOW(),
-                session_id TEXT
+                session_id TEXT,
+                is_deleted BOOLEAN NOT NULL DEFAULT FALSE
             );
+        """)
+        cur.execute("ALTER TABLE memories ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE;")
+        cur.execute("""
+            ALTER TABLE memories ADD COLUMN IF NOT EXISTS search_vector tsvector
+                GENERATED ALWAYS AS (to_tsvector('english', content)) STORED;
         """)
         cur.execute(f"""
             CREATE INDEX IF NOT EXISTS memories_embedding_idx
                 ON memories USING ivfflat (embedding vector_cosine_ops) WITH (lists = 50);
         """)
         cur.execute("CREATE INDEX IF NOT EXISTS memories_created_idx ON memories (created_at DESC);")
+        cur.execute("CREATE INDEX IF NOT EXISTS memories_search_vector_idx ON memories USING GIN (search_vector);")
         conn.commit()
         cur.close()
         log.info("DB schema ready.")
@@ -101,13 +110,24 @@ def init_db():
 
 # ── Core operations ───────────────────────────────────────────────────────────
 
-def _remember(content: str, source: str = "manual", tags: list[str] = [], session_id: str = "") -> str:
+def _remember(content: str, source: str = "manual", tags: list[str] | None = None, session_id: str = "") -> str:
     if not content.strip():
         return "Empty content — skipped."
     vec = embed(content)
     conn = get_db()
     try:
         cur = conn.cursor()
+        cur.execute(
+            """SELECT id, 1 - (embedding <=> %s::vector) AS similarity
+               FROM memories
+               WHERE is_deleted = FALSE
+               ORDER BY embedding <=> %s::vector
+               LIMIT 1""",
+            (vec, vec),
+        )
+        nearest = cur.fetchone()
+        if nearest and nearest[1] >= DEDUP_THRESHOLD:
+            return f"Duplicate of #{nearest[0]} (similarity {nearest[1]:.3f}) — skipped."
         cur.execute(
             "INSERT INTO memories (content, source, tags, embedding, session_id) VALUES (%s, %s, %s, %s, %s) RETURNING id",
             (content, source, tags or [], vec, session_id or None),
@@ -120,25 +140,60 @@ def _remember(content: str, source: str = "manual", tags: list[str] = [], sessio
         release_db(conn)
 
 
+KEYWORD_BOOST = 0.15  # additive bump for exact-term hits embeddings underrate; capped at 0.999
+
+
 def _search(query: str, k: int = 5) -> list[dict]:
     if not query.strip():
         return []
     vec = embed(query, kind="query")
+    pool = max(k * 3, 15)
+
+    # Postgres's parser treats dotted/hyphenated tokens (e.g. "crg-ob1-sync.timer") as a
+    # single "host"-type lexeme and won't split them — plainto_tsquery on the raw query
+    # then never matches. Splitting into words ourselves and OR-ing (not AND-ing, since
+    # plainto_tsquery on a full sentence would require every word present) restores recall.
+    words = re.findall(r"\w+", query.lower()) or [query]
+    params = {"vec": vec, "pool": pool}
+    word_keys = []
+    for i, w in enumerate(words):
+        key = f"w{i}"
+        params[key] = w
+        word_keys.append(key)
+    or_tsquery = " || ".join(f"plainto_tsquery('english', %({k})s)" for k in word_keys)
+
     conn = get_db()
     try:
         from psycopg2.extras import RealDictCursor
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(
-            """SELECT id, content, source, tags, session_id, created_at,
-                      1 - (embedding <=> %s::vector) AS similarity
-               FROM memories
-               ORDER BY embedding <=> %s::vector
-               LIMIT %s""",
-            (vec, vec, k),
+            f"""WITH vector_hits AS (
+                   SELECT id, content, source, tags, session_id, created_at,
+                          1 - (embedding <=> %(vec)s::vector) AS similarity,
+                          FALSE AS is_keyword_hit
+                   FROM memories
+                   WHERE is_deleted = FALSE
+                   ORDER BY embedding <=> %(vec)s::vector
+                   LIMIT %(pool)s
+               ),
+               keyword_hits AS (
+                   SELECT id, content, source, tags, session_id, created_at,
+                          1 - (embedding <=> %(vec)s::vector) AS similarity,
+                          TRUE AS is_keyword_hit
+                   FROM memories
+                   WHERE is_deleted = FALSE
+                     AND search_vector @@ ({or_tsquery})
+                   ORDER BY ts_rank(search_vector, ({or_tsquery})) DESC
+                   LIMIT %(pool)s
+               )
+               SELECT DISTINCT ON (id) *
+               FROM (SELECT * FROM vector_hits UNION ALL SELECT * FROM keyword_hits) merged
+               ORDER BY id, is_keyword_hit DESC""",
+            params,
         )
         rows = cur.fetchall()
         cur.close()
-        return [
+        results = [
             {
                 "id": r["id"],
                 "content": r["content"],
@@ -146,9 +201,14 @@ def _search(query: str, k: int = 5) -> list[dict]:
                 "tags": r["tags"],
                 "similarity": round(float(r["similarity"]), 3),
                 "created_at": str(r["created_at"]),
+                "_score": min(float(r["similarity"]) + (KEYWORD_BOOST if r["is_keyword_hit"] else 0.0), 0.999),
             }
             for r in rows
         ]
+        results.sort(key=lambda r: r["_score"], reverse=True)
+        for r in results:
+            del r["_score"]
+        return results[:k]
     finally:
         release_db(conn)
 
@@ -157,7 +217,10 @@ def _forget(memory_id: int) -> str:
     conn = get_db()
     try:
         cur = conn.cursor()
-        cur.execute("DELETE FROM memories WHERE id = %s RETURNING id", (memory_id,))
+        cur.execute(
+            "UPDATE memories SET is_deleted = TRUE WHERE id = %s AND is_deleted = FALSE RETURNING id",
+            (memory_id,),
+        )
         deleted = cur.fetchone()
         conn.commit()
         cur.close()
@@ -170,7 +233,7 @@ def _count() -> int:
     conn = get_db()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM memories")
+        cur.execute("SELECT COUNT(*) FROM memories WHERE is_deleted = FALSE")
         n = cur.fetchone()[0]
         cur.close()
         return n
@@ -189,15 +252,16 @@ mcp = FastMCP(
 
 
 @mcp.tool()
-def remember(content: str, source: str = "manual", tags: list[str] = [], session_id: str = "") -> str:
+def remember(content: str, source: str = "manual", tags: list[str] | None = None, session_id: str = "") -> str:
     """Store a memory with semantic embedding for future retrieval across sessions."""
     return _remember(content, source, tags, session_id)
 
 
 @mcp.tool()
 def search(query: str, k: int = 5) -> str:
-    """Search memories semantically. Returns top-K relevant memories as JSON.
-    Use this before answering questions about past work, decisions, or context."""
+    """Hybrid search: semantic (embeddings) + keyword (full-text) over memories.
+    Returns top-K relevant memories as JSON. Use this before answering questions
+    about past work, decisions, or context."""
     results = _search(query, k)
     if not results:
         return "No memories found."
@@ -206,7 +270,7 @@ def search(query: str, k: int = 5) -> str:
 
 @mcp.tool()
 def forget(memory_id: int) -> str:
-    """Delete a specific memory by ID."""
+    """Soft-delete a specific memory by ID (excluded from search, recoverable in DB)."""
     return _forget(memory_id)
 
 
@@ -218,7 +282,7 @@ def memory_stats() -> str:
     try:
         from psycopg2.extras import RealDictCursor
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT source, COUNT(*) as n FROM memories GROUP BY source ORDER BY n DESC LIMIT 10")
+        cur.execute("SELECT source, COUNT(*) as n FROM memories WHERE is_deleted = FALSE GROUP BY source ORDER BY n DESC LIMIT 10")
         sources = cur.fetchall()
         cur.close()
         return json.dumps({"total": n, "by_source": [dict(r) for r in sources]}, indent=2)
@@ -266,7 +330,7 @@ def _check_auth(request: Request):
 def health():
     try:
         n = _count()
-        return {"status": "ok", "memories": n}
+        return {"status": "ok", "memories": n, "model_ready": _embedder is not None}
     except Exception as e:
         return JSONResponse({"status": "error", "detail": str(e)}, status_code=500)
 
