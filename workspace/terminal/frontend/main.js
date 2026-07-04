@@ -94,42 +94,6 @@ function waitForRealMetrics(onReady, attempts = 0) {
   requestAnimationFrame(() => waitForRealMetrics(onReady, attempts + 1));
 }
 
-// WebSocket connection
-const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-const ws = new WebSocket(`${proto}://${location.host}/ws`);
-ws.binaryType = 'arraybuffer';
-
-ws.onopen = () => {
-  dot.className = 'dot';
-  statusEl.textContent = 'Connected';
-  // Send initial (possibly rough) size immediately so the PTY isn't left unsized
-  const { cols, rows } = fitTerm();
-  ws.send(JSON.stringify({ type: 'resize', cols, rows }));
-  // Correct it once ghostty-web has real font-cell metrics — fixes the
-  // undersized-terminal/blank-space-at-bottom issue on first load.
-  waitForRealMetrics(() => {
-    const fitted = fitTerm();
-    ws.send(JSON.stringify({ type: 'resize', cols: fitted.cols, rows: fitted.rows }));
-  });
-  // Fonts loading late can also shift cell metrics; re-fit once more after that.
-  if (document.fonts && document.fonts.ready) {
-    document.fonts.ready.then(() => {
-      const fitted = fitTerm();
-      ws.send(JSON.stringify({ type: 'resize', cols: fitted.cols, rows: fitted.rows }));
-    });
-  }
-};
-
-ws.onclose = () => {
-  dot.className = 'dot disconnected';
-  statusEl.textContent = 'Disconnected — reload to reconnect';
-};
-
-ws.onerror = () => {
-  dot.className = 'dot disconnected';
-  statusEl.textContent = 'Connection error';
-};
-
 // Rolling plain-text tail of recent output (ANSI stripped) — used to detect
 // what kind of prompt is currently on screen, so the mobile toolbar can show
 // only the buttons that are actually relevant instead of a static wall of 24.
@@ -144,17 +108,94 @@ function appendRecentText(chunk) {
   }
 }
 
-ws.onmessage = (e) => {
-  if (e.data instanceof ArrayBuffer) {
-    const bytes = new Uint8Array(e.data);
-    term.write(bytes);
-    appendRecentText(new TextDecoder('utf-8', { fatal: false }).decode(bytes));
-  } else {
-    term.write(e.data);
-    appendRecentText(e.data);
+// WebSocket connection — reconnects with backoff on drop. herdr's session
+// (and any agent running inside it, e.g. agy) lives in a detached `herdr
+// server` daemon, not in the per-connection PTY, so a dropped socket does NOT
+// kill the running session: reconnecting just re-attaches. Mobile networks
+// drop sockets constantly (screen lock, cell/wifi handoff, backgrounding) —
+// previously this left the terminal permanently "Disconnected — reload to
+// reconnect" until the user manually refreshed.
+const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+let ws;
+let reconnectAttempt = 0;
+let reconnectTimer = null;
+
+function connectWS() {
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = () => {
+    reconnectAttempt = 0;
+    dot.className = 'dot';
+    statusEl.textContent = 'Connected';
+    // Send initial (possibly rough) size immediately so the PTY isn't left unsized
+    const { cols, rows } = fitTerm();
+    ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+    // Correct it once ghostty-web has real font-cell metrics — fixes the
+    // undersized-terminal/blank-space-at-bottom issue on first load.
+    waitForRealMetrics(() => {
+      const fitted = fitTerm();
+      ws.send(JSON.stringify({ type: 'resize', cols: fitted.cols, rows: fitted.rows }));
+    });
+    // Fonts loading late can also shift cell metrics; re-fit once more after that.
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => {
+        const fitted = fitTerm();
+        ws.send(JSON.stringify({ type: 'resize', cols: fitted.cols, rows: fitted.rows }));
+      });
+    }
+  };
+
+  ws.onclose = () => {
+    dot.className = 'dot disconnected';
+    scheduleReconnect();
+  };
+
+  ws.onerror = () => {
+    dot.className = 'dot disconnected';
+    statusEl.textContent = 'Connection error';
+  };
+
+  ws.onmessage = (e) => {
+    if (e.data instanceof ArrayBuffer) {
+      const bytes = new Uint8Array(e.data);
+      term.write(bytes);
+      appendRecentText(new TextDecoder('utf-8', { fatal: false }).decode(bytes));
+    } else {
+      term.write(e.data);
+      appendRecentText(e.data);
+    }
+    updateToolbarContext();
+  };
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  reconnectAttempt += 1;
+  const delay = Math.min(500 * 2 ** (reconnectAttempt - 1), 8000); // 500ms, 1s, 2s, 4s, 8s cap
+  statusEl.textContent = `Reconnecting… (${(delay / 1000).toFixed(1)}s)`;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectWS();
+  }, delay);
+}
+
+connectWS();
+
+// Phones suspend JS and drop sockets on background/lock; when the tab comes
+// back to the foreground, reconnect immediately instead of waiting out
+// whatever backoff delay was in flight (or worse, a socket that looks alive
+// but is actually dead — force a fresh one whenever it's not OPEN/CONNECTING).
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
   }
-  updateToolbarContext();
-};
+  reconnectAttempt = 0;
+  connectWS();
+});
 
 term.onData((data) => {
   if (ws.readyState === WebSocket.OPEN) ws.send(data);
@@ -308,18 +349,38 @@ document.addEventListener('wheel', (e) => {
   e.preventDefault();
   e.stopPropagation();
 }, { passive: false, capture: true });
-// Touch scroll on terminal canvas
+// Touch scroll on terminal canvas — mirrors the wheel handler above. The old
+// version only called term.scrollLines(), which moves ghostty-web's own local
+// scrollback buffer — a no-op for any alt-screen app (herdr's own UI, tmux,
+// vim, less, claude, agy...), which is effectively the entire session. That's
+// why touch-drag scrolling looked completely dead on phone. Now: send SGR
+// mouse wheel reports when the app wants real mouse tracking, otherwise send
+// PageUp/PageDown like the wheel handler does.
 let touchStartY = 0;
 let touchTotalMove = 0;
+let touchAccum = 0;
+const TOUCH_PAGE_THRESHOLD = 80; // px of drag before firing one PageUp/PageDown
 document.getElementById('terminal').addEventListener('touchstart', (e) => {
   touchStartY = e.touches[0].clientY;
   touchTotalMove = 0;
+  touchAccum = 0;
 }, { passive: true });
 document.getElementById('terminal').addEventListener('touchmove', (e) => {
-  const dy = touchStartY - e.touches[0].clientY;
+  const t = e.touches[0];
+  const dy = touchStartY - t.clientY;
   touchTotalMove += Math.abs(dy);
-  touchStartY = e.touches[0].clientY;
-  term.scrollLines(Math.round(dy / 20));
+  touchStartY = t.clientY;
+  if (ws.readyState !== WebSocket.OPEN) return;
+  if (term.hasMouseTracking && term.hasMouseTracking()) {
+    sendSgrMouse(dy < 0 ? 65 : 64, t.clientX, t.clientY, false);
+    return;
+  }
+  touchAccum += dy;
+  if (Math.abs(touchAccum) >= TOUCH_PAGE_THRESHOLD) {
+    const seq = touchAccum < 0 ? '\x1b[5~' : '\x1b[6~'; // Page Up / Page Down
+    ws.send(seq);
+    touchAccum = 0;
+  }
 }, { passive: true });
 
 // Taps count as clicks for touch devices too (tap-to-focus sidebar entries

@@ -17,22 +17,35 @@ app.get('*', (_, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
 
+// A synchronous throw from pty.spawn (or anything else in this callback)
+// used to crash the whole process — taking down every other connected
+// session with it. herdr's own daemon survives a server.js crash/restart
+// fine (see memory: KillMode=process), but there's no reason one bad
+// connection should still drop everyone else's socket in the meantime.
 wss.on('connection', (ws, req) => {
   const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
   console.log(`[+] connection from ${ip}`);
 
-  const ptyProcess = pty.spawn(CMD, CMD_ARGS, {
-    name: 'xterm-256color',
-    cols: 220,
-    rows: 50,
-    cwd: process.env.HOME,
-    env: {
-      ...process.env,
-      TERM: 'xterm-256color',
-      COLORTERM: 'truecolor',
-      LANG: 'en_US.UTF-8',
-    },
-  });
+  let ptyProcess;
+  try {
+    ptyProcess = pty.spawn(CMD, CMD_ARGS, {
+      name: 'xterm-256color',
+      cols: 220,
+      rows: 50,
+      cwd: process.env.HOME,
+      env: {
+        ...process.env,
+        TERM: 'xterm-256color',
+        COLORTERM: 'truecolor',
+        LANG: 'en_US.UTF-8',
+      },
+    });
+  } catch (err) {
+    console.error(`[!] failed to spawn pty for ${ip}: ${err.message}`);
+    ws.send(`\r\n\x1b[31mFailed to start terminal session: ${err.message}\x1b[0m\r\n`);
+    ws.close();
+    return;
+  }
 
   ptyProcess.onData((data) => {
     if (ws.readyState === ws.OPEN) ws.send(data);
@@ -77,4 +90,18 @@ wss.on('connection', (ws, req) => {
 server.listen(PORT, HOST, () => {
   console.log(`cryptex-terminal listening on ${HOST}:${PORT}`);
   console.log(`command: ${CMD} ${CMD_ARGS.join(' ')}`);
+});
+
+// Previously unhandled — an uncaught exception anywhere (not just inside the
+// per-connection try/catch above) would crash silently with just a bare node
+// stack trace in the journal. Log clearly and exit so systemd's
+// Restart=always brings it back cleanly; herdr's own session state survives
+// a server.js restart regardless (KillMode=process).
+process.on('uncaughtException', (err) => {
+  console.error(`[!] uncaughtException: ${err.stack || err}`);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error(`[!] unhandledRejection: ${reason}`);
+  process.exit(1);
 });
