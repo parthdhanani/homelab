@@ -1,6 +1,6 @@
 #!/bin/bash
 # CRYPTEX — Update all channels
-# Covers all 10 install channels. Add new standalones to standalone-tools.json only.
+# Covers all 11 install channels. Add new standalones to standalone-tools.json only.
 # Usage: sudo bash /opt/cryptex/scripts/update-all-channels.sh [--dry-run]
 
 set +e
@@ -34,7 +34,7 @@ log "=== update-all-channels start ==="
 [ $DRY_RUN -eq 1 ] && echo "${YEL}DRY RUN — no changes will be made${RST}"
 
 # ── 1. Docker containers ──────────────────────────────────────────────────────
-hdr "1/10  Docker containers"
+hdr "1/11  Docker containers"
 if [ $DRY_RUN -eq 1 ]; then
     dry "docker compose pull + up -d"
     # Show any registry-pulled containers already running a stale digest
@@ -72,7 +72,7 @@ else
 fi
 
 # ── 2. apt ────────────────────────────────────────────────────────────────────
-hdr "2/10  apt packages"
+hdr "2/11  apt packages"
 if [ $DRY_RUN -eq 1 ]; then
     UPGRADABLE=$(apt list --upgradable 2>/dev/null | grep -vc "Listing")
     dry "apt upgrade ($UPGRADABLE packages upgradable)"
@@ -86,7 +86,7 @@ else
 fi
 
 # ── 3. npm globals (auto-discovered) ─────────────────────────────────────────
-hdr "3/10  npm globals"
+hdr "3/11  npm globals"
 NPM_BIN=$(sudo -u "$REAL_USER" which npm 2>/dev/null || which npm 2>/dev/null || echo "/usr/bin/npm")
 # Always run as the real user, never root
 _npm() { sudo -u "$REAL_USER" "$NPM_BIN" "$@" 2>/dev/null; }
@@ -124,8 +124,9 @@ print(d.get('dependencies',{}).get(os.environ['PKG'],{}).get('version',''))
 fi
 
 # ── 4. pip --user (auto-discovered) ──────────────────────────────────────────
-hdr "4/10  pip --user packages"
-OUTDATED=$(pip list --user --outdated --format=json 2>/dev/null)
+hdr "4/11  pip --user packages"
+PIP_BIN=$(sudo -u "$REAL_USER" -H bash -lc 'which pip' 2>/dev/null || echo "$REAL_HOME/.local/bin/pip")
+OUTDATED=$(sudo -u "$REAL_USER" "$PIP_BIN" list --user --outdated --format=json 2>/dev/null)
 COUNT=$(echo "$OUTDATED" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || echo 0)
 
 if [ "$COUNT" -eq 0 ]; then
@@ -138,11 +139,44 @@ for p in json.load(sys.stdin):
 " 2>/dev/null
 else
     PKGS=$(echo "$OUTDATED" | python3 -c "import json,sys; print(' '.join(p['name'] for p in json.load(sys.stdin)))" 2>/dev/null)
-    sudo -u "$REAL_USER" pip install --user --upgrade $PKGS >> "$LOG" 2>&1 && ok "pip: $COUNT packages updated" || fail "pip upgrade"
+    sudo -u "$REAL_USER" "$PIP_BIN" install --user --upgrade $PKGS >> "$LOG" 2>&1 && ok "pip: $COUNT packages updated" || fail "pip upgrade"
 fi
 
-# ── 5. Standalone binaries (manifest-driven) ─────────────────────────────────
-hdr "5/10  Standalone binaries (/usr/local/bin)"
+# ── 5. pipx packages ──────────────────────────────────────────────────────────
+hdr "5/11  pipx packages"
+PIPX_BIN=$(sudo -u "$REAL_USER" -H bash -lc 'which pipx' 2>/dev/null || echo "$REAL_HOME/.local/bin/pipx")
+PIPX_OUTDATED=$(sudo -u "$REAL_USER" "$PIPX_BIN" list --json 2>/dev/null | PIP_BIN="$PIP_BIN" REAL_USER="$REAL_USER" python3 -c "
+import json,sys,subprocess,os
+try:
+    d=json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+pip_bin = os.environ.get('PIP_BIN') or 'pip'
+real_user = os.environ['REAL_USER']
+for name,info in d.get('venvs',{}).items():
+    cur=info['metadata']['main_package']['package_version']
+    try:
+        latest=subprocess.check_output(['sudo','-u',real_user,pip_bin,'index','versions',name],stderr=subprocess.DEVNULL,timeout=10).decode()
+        latest=latest.split('(')[1].split(')')[0] if '(' in latest else cur
+    except Exception:
+        latest=cur
+    if latest!=cur:
+        print(f'{name} {cur} {latest}')
+")
+if [ -z "$PIPX_OUTDATED" ]; then
+    skip "pipx packages (all up to date)"
+elif [ $DRY_RUN -eq 1 ]; then
+    echo "$PIPX_OUTDATED" | while read -r name cur latest; do
+        dry "pipx $name $cur → $latest"
+    done
+else
+    echo "$PIPX_OUTDATED" | while read -r name cur latest; do
+        sudo -u "$REAL_USER" -H bash -lc "'$PIPX_BIN' upgrade '$name'" >> "$LOG" 2>&1 && ok "pipx $name → $latest" || fail "pipx upgrade $name"
+    done
+fi
+
+# ── 6. Standalone binaries (manifest-driven) ─────────────────────────────────
+hdr "6/11  Standalone binaries (/usr/local/bin)"
 MANIFEST="$SCRIPT_DIR/standalone-tools.json"
 TMPDIR_BIN=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_BIN"' EXIT
@@ -252,7 +286,7 @@ for t in tools:
 PYEOF
 
 # ── 6. Native claude ──────────────────────────────────────────────────────────
-hdr "6/10  Native claude (claude update)"
+hdr "7/11  Native claude (claude update)"
 NATIVE_CLAUDE=$(ls "$REAL_HOME/.local/bin/claude" 2>/dev/null || echo "")
 if [ -n "$NATIVE_CLAUDE" ]; then
     if [ $DRY_RUN -eq 1 ]; then
@@ -266,14 +300,15 @@ else
 fi
 
 # ── 7. uv ─────────────────────────────────────────────────────────────────────
-hdr "7/10  uv"
-if command -v uv >/dev/null 2>&1; then
-    BEFORE=$(uv --version 2>/dev/null)
+hdr "8/11  uv"
+UV_BIN=$(sudo -u "$REAL_USER" -H bash -lc 'which uv' 2>/dev/null)
+if [ -n "$UV_BIN" ]; then
+    BEFORE=$(sudo -u "$REAL_USER" "$UV_BIN" --version 2>/dev/null)
     if [ $DRY_RUN -eq 1 ]; then
         dry "uv self update (current: $BEFORE)"
     else
-        uv self update >> "$LOG" 2>&1
-        AFTER=$(uv --version 2>/dev/null)
+        sudo -u "$REAL_USER" "$UV_BIN" self update >> "$LOG" 2>&1
+        AFTER=$(sudo -u "$REAL_USER" "$UV_BIN" --version 2>/dev/null)
         [ "$BEFORE" != "$AFTER" ] && ok "uv $BEFORE → $AFTER" || skip "uv ($BEFORE)"
     fi
 else
@@ -281,14 +316,19 @@ else
 fi
 
 # ── 8. Pinned container tags (flag only) ──────────────────────────────────────
-hdr "8/10  Pinned container tags"
+hdr "9/11  Pinned container tags"
 echo "  Checking for pinned tags that have newer upstream versions..."
+echo "  ${YEL}NOTE:${RST} this compares a manifest-list digest to a platform digest, which"
+echo "  structurally mismatches for most multi-arch images even when fully current"
+echo "  (verified 2026-07-05: cloudflared/n8n flagged here despite being confirmed"
+echo "  latest via GitHub/Docker Hub). Treat every '!' below as 'go verify manually'"
+echo "  via the registry, not as ground truth."
 PINNED=$(docker ps --format '{{.Names}} {{.Image}}' 2>/dev/null | grep -v ':latest' | grep -v '@sha256:')
 if [ -z "$PINNED" ]; then
     skip "no pinned-tag containers found"
 else
     echo "$PINNED" | while IFS=' ' read -r cname image; do
-        LOCAL=$(docker inspect --format '{{index .RepoDigests 0}}' "$cname" 2>/dev/null | grep -o 'sha256:[a-f0-9]*')
+        LOCAL=$(docker inspect --format '{{index .RepoDigests 0}}' "$image" 2>/dev/null | grep -o 'sha256:[a-f0-9]*')
         [ -z "$LOCAL" ] && continue
         REMOTE=$(docker manifest inspect "$image" 2>/dev/null | python3 -c "
 import json,sys
@@ -311,7 +351,7 @@ except: pass
 fi
 
 # ── 9. Claude plugin marketplaces ─────────────────────────────────────────────
-hdr "9/10  Claude plugin marketplaces"
+hdr "10/11  Claude plugin marketplaces"
 MKTPLACES_DIR="$REAL_HOME/.claude/plugins/marketplaces"
 if [ -d "$MKTPLACES_DIR" ]; then
     for mdir in "$MKTPLACES_DIR"/*/; do
@@ -333,7 +373,7 @@ else
 fi
 
 # ── 10. Docker cleanup ────────────────────────────────────────────────────────
-hdr "10/10  Docker cleanup"
+hdr "11/11  Docker cleanup"
 if [ $DRY_RUN -eq 1 ]; then
     DANGLING=$(docker images -f dangling=true -q 2>/dev/null | wc -l)
     CACHE_SIZE=$(docker system df --format '{{.BuildCacheSize}}' 2>/dev/null || echo "?")
