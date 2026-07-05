@@ -1,7 +1,7 @@
 [
   {
     "name": "starship",
-    "repo": "starship-rs/starship",
+    "repo": "starship/starship",
     "asset_pattern": "aarch64-unknown-linux-musl.tar.gz",
     "binary_in_archive": "starship",
     "install_path": "/usr/local/bin/starship",
@@ -29,7 +29,7 @@
   {
     "name": "wstunnel",
     "repo": "erebe/wstunnel",
-    "asset_pattern": "wstunnel_linux_aarch64.tar.gz",
+    "asset_pattern": "wstunnel_.*_linux_arm64.tar.gz",
     "binary_in_archive": "wstunnel",
     "install_path": "/usr/local/bin/wstunnel",
     "version_cmd": "wstunnel --version",
