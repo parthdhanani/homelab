@@ -1,0 +1,10 @@
+[Unit]
+Description=PKM vault → GitHub sanitized mirror sync
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+User=ubuntu
+Environment=HOME=/home/ubuntu
+ExecStart=/bin/bash /opt/cryptex/scripts/pkm-github-sync.sh
+TimeoutStartSec=600

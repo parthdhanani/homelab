@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly git fleet verify (every repo committed + pushed to GitHub)
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+User=ubuntu
+Environment=HOME=/home/ubuntu
+ExecStart=/bin/bash /opt/cryptex/scripts/fleet-verify.sh
+TimeoutStartSec=600

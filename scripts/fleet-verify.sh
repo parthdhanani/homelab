@@ -15,7 +15,7 @@ alert() {
 
 mapfile -t REPOS < <(find /home /opt -name .git \( -type d -o -type f \) 2>/dev/null \
   | sed 's#/\.git$##' \
-  | grep -vE '/\.cache/|/\.claude/jobs/|/plugins/marketplaces/|/node_modules/|/\.git\.local-backup' \
+  | grep -vE '/\.cache/|/\.claude/jobs/|/plugins/marketplaces/|/node_modules/|/\.git\.local-backup|/\.gemini/antigravity-cli/brain/' \
   | sort -u)
 
 problems=""

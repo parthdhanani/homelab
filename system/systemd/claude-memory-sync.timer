@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly Claude memory machine (sync + anti-bloat)
+
+[Timer]
+OnCalendar=*-*-* 03:50:00
+Persistent=true
+RandomizedDelaySec=180
+
+[Install]
+WantedBy=timers.target

@@ -10,13 +10,26 @@ source /opt/cryptex/.env 2>/dev/null || true
 _alert() {
     local msg="$1"
     echo "${TS} WATCHDOG: ${msg}" >> /var/log/cryptex-watchdog.log
-    if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
-        curl -sf --max-time 5 \
-            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d "chat_id=${TELEGRAM_CHAT_ID}&text=${msg}" \
-            >/dev/null 2>&1 || true
+    if [ -n "${ADMIN_EMAIL:-}" ]; then
+        printf "To: %s\nSubject: [Cryptex Watchdog] %s\nContent-Type: text/plain\n\n%s\n" \
+            "$ADMIN_EMAIL" "$msg" "$msg" | msmtp --from=default "$ADMIN_EMAIL" 2>/dev/null || true
     fi
 }
+
+# ── 0. earlyoom kill detector ─────────────────────────────────
+# earlyoom (installed 2026-07-05 after a 3hr memory-thrash freeze forced a
+# hard reboot) SIGKILLs the worst memory hog before the whole box locks up.
+# Report each new kill since last check so the culprit is never a mystery again.
+EARLYOOM_MARK=/var/lib/earlyoom-watchdog.lastline
+LAST_LINE=$(cat "$EARLYOOM_MARK" 2>/dev/null || echo 0)
+CUR_LINE=$(journalctl -u earlyoom --no-pager -q | wc -l)
+if [ "$CUR_LINE" -gt "$LAST_LINE" ]; then
+    NEW_KILLS=$(journalctl -u earlyoom --no-pager -q | tail -n +$((LAST_LINE + 1)) | grep -i "sending SIGKILL" || true)
+    if [ -n "$NEW_KILLS" ]; then
+        _alert "🚨 earlyoom killed a process to prevent a full freeze: ${NEW_KILLS}"
+    fi
+fi
+echo "$CUR_LINE" > "$EARLYOOM_MARK"
 
 # ── 1. Restart unhealthy containers ──────────────────────────
 UNHEALTHY=$(docker ps --filter health=unhealthy --format '{{.Names}}' 2>/dev/null)

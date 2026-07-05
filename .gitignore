@@ -10,6 +10,10 @@ secrets.env
 .env.*.local
 !.env.example
 .env.encrypted
+.dns-tokens.env
+# nginx config embeds raw device tokens inline - never commit as plaintext;
+# regenerate from .dns-tokens.env if restoring on a fresh box
+system/nginx/sites-enabled/dns-doh-proxy.conf
 *.key
 *.pem
 id_rsa*

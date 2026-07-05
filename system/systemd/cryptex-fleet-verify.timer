@@ -1,0 +1,7 @@
+[Unit]
+Description=Weekly git fleet verify
+[Timer]
+OnCalendar=Sun *-*-* 05:00:00
+Persistent=true
+[Install]
+WantedBy=timers.target

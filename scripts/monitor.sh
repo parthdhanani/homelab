@@ -80,6 +80,18 @@ else
     fail "PKM watcher  $PKM_STATUS"
 fi
 
+# Claude Code bg-spare pool (background-job pre-warm processes) —
+# accumulates when interactive terminal tabs are left open indefinitely;
+# closing the owning tab reaps its spares. Flag if it's grown unusually large.
+BGSPARE_RSS_KB=$(ps -eo rss,cmd 2>/dev/null | grep -- '--bg-spare\|--bg-pty-host' | grep -v grep | awk '{s+=$1} END{print s+0}')
+BGSPARE_COUNT=$(ps -eo cmd 2>/dev/null | grep -c -- '--bg-spare')
+BGSPARE_MAX_AGE_S=$(ps -eo etimes,cmd 2>/dev/null | grep -- '--bg-spare' | grep -v grep | awk '{if($1>m)m=$1} END{print m+0}')
+if [ "$BGSPARE_RSS_KB" -gt 1572864 ] || [ "$BGSPARE_MAX_AGE_S" -gt 43200 ]; then
+    warn "bg-spare pool  $((BGSPARE_RSS_KB/1024))MB  ${BGSPARE_COUNT} procs  oldest $((BGSPARE_MAX_AGE_S/3600))h  ${DIM}(close stale Claude Code terminal tabs)${RST}"
+else
+    ok "bg-spare pool  $((BGSPARE_RSS_KB/1024))MB  ${BGSPARE_COUNT} procs"
+fi
+
 # Graphify index
 GRAPH_PATHS=("graphify-out/graph.json" "/opt/cryptex/scripts/graphify-out/graph.json")
 GRAPH_FOUND=0
