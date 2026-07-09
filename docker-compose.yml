@@ -271,7 +271,6 @@ services:
     volumes:
       - /opt/cryptex/configs/nginx/portfolio.conf:/etc/nginx/conf.d/portfolio.conf:ro
       - /opt/cryptex/configs/nginx/aquasoul.conf:/etc/nginx/conf.d/aquasoul.conf:ro
-      - /opt/cryptex/configs/nginx/code-server.conf:/etc/nginx/conf.d/code-server.conf:ro
       - /opt/cryptex/configs/nginx/files.conf:/etc/nginx/conf.d/files.conf:ro
       - /opt/cryptex/data/portfolio:/usr/share/nginx/html:ro
       - /opt/cryptex/data/aquasoul:/srv/aquasoul:ro
@@ -463,7 +462,7 @@ services:
 
   n8n:
     <<: *defaults
-    image: n8nio/n8n:2.29.5
+    image: n8nio/n8n:2.29.9
     container_name: cryptex-n8n
     user: "1000:1000"
     ports:

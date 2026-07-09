@@ -16,9 +16,11 @@ Last verified: 2026-07-09.
 | notes.psidex.com | 172.18.0.48:8080 (cryptex-ignis, browser Obsidian on live PKM vault — replaces static MkDocs "notes" nginx, 2026-07-09) | Yes (CF Access only — no app-level guard, fully editable vault) |
 | aqua.psidex.com | 172.18.0.10:80 (portfolio) | None — public portfolio |
 | git.psidex.com | 172.18.0.31:3000 (forgejo) | Yes |
-| sb.psidex.com | 172.18.0.1:5050 (host sb-tool gunicorn, direct — nginx :8086 proxy unused) | **NONE — TODO: add ZT Access** |
+| sb.psidex.com | 172.18.0.1:5050 (host sb-tool gunicorn, direct — nginx :8086 proxy unused) | None — intentional: coworkers use /course/ without CF Access login |
 | chat.psidex.com | librechat | Yes (confirmed 2026-05-30) |
 | files.psidex.com | openlist/alist | — |
+| watch.psidex.com | 172.18.0.1:12055 (kinolist-server.service, host systemd, serves built dist/) | Yes (302 to login confirmed) |
+| dev.psidex.com | 172.18.0.1:5173 (kinolist-dev.service, host systemd running vite dev server — added 2026-07-09, previously an unsupervised stray process) | Yes (302 to login confirmed) |
 
 Rules (from Phase 4 decisions):
 - New route → must use 172.18.0.1:<port> for host services (CF bridge pattern), container IP for containers

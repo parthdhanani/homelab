@@ -12,31 +12,21 @@ while IFS=' ' read -r CNAME IMAGE; do
     # Skip :latest (not pinned, Dockhand handles these visually)
     [[ "$IMAGE" == *":latest"* ]] && continue
 
-    # Pull manifest only (no layer download) — compares remote manifest digest with local
-    LOCAL_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' "$CNAME" 2>/dev/null \
+    # Pull manifest only (no layer download) — compares remote manifest digest with local.
+    # Bug fixed 2026-07-09: .RepoDigests is an image-level field, not a container-level one —
+    # querying $CNAME here always returned empty, so this check silently never fired since
+    # it was added (infra-cleanup-2026-05-17).
+    LOCAL_DIGEST=$(docker image inspect --format '{{index .RepoDigests 0}}' "$IMAGE" 2>/dev/null \
         | grep -o 'sha256:[a-f0-9]*')
     [ -z "$LOCAL_DIGEST" ] && continue
 
-    REMOTE_INFO=$(docker manifest inspect "$IMAGE" 2>/dev/null)
-    [ -z "$REMOTE_INFO" ] && continue
+    # Bug fixed 2026-07-09: `docker manifest inspect` + drilling into the arm64 platform entry
+    # returns a per-platform manifest digest, not the manifest-LIST digest stored in RepoDigests —
+    # comparing the two always mismatched even when fully up to date. imagetools --raw + sha256sum
+    # reproduces the exact digest a `docker pull` would record, so it's directly comparable.
+    REMOTE_DIGEST="sha256:$(docker buildx imagetools inspect --raw "$IMAGE" 2>/dev/null | sha256sum | awk '{print $1}')"
 
-    # For multi-arch manifests, find the arm64 entry; else use first entry
-    REMOTE_DIGEST=$(echo "$REMOTE_INFO" | python3 -c "
-import json, sys
-try:
-    d = json.load(sys.stdin)
-    if 'manifests' in d:
-        for m in d['manifests']:
-            if m.get('platform', {}).get('architecture') == 'arm64':
-                print(m['digest']); break
-        else:
-            print(d['manifests'][0]['digest'])
-    elif 'config' in d:
-        print(d['config']['digest'])
-except: pass
-" 2>/dev/null)
-
-    [ -z "$REMOTE_DIGEST" ] && continue
+    [ "$REMOTE_DIGEST" = "sha256:" ] && continue
 
     if [ "$LOCAL_DIGEST" != "$REMOTE_DIGEST" ]; then
         UPDATES+=("  $CNAME  →  $IMAGE")
