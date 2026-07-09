@@ -1103,32 +1103,37 @@ services:
       timeout: 5s
       retries: 3
 
-  # ── Notes — MkDocs Material static site (Obsidian vault → HTML, built via cron) ──
-  # Build runs every 15min: /opt/cryptex/scripts/notes-build.sh
-  # Manual rebuild: bash /opt/cryptex/scripts/notes-build.sh --force
-  # Vault source: /opt/cryptex/data/pkm
-  notes:
+  # Ignis — browser-based Obsidian, replaces static MkDocs "notes" publish with live editable PKM vault
+  # Repo: https://github.com/Nystik-gh/ignis, built locally from /opt/cryptex/apps/ignis
+  ignis:
     <<: *defaults
-    image: nginx:alpine
-    container_name: cryptex-notes
+    build:
+      context: /opt/cryptex/apps/ignis
+      dockerfile: apps/ignis-server/Dockerfile
+    container_name: cryptex-ignis
     networks:
       cryptex_net:
-        ipv4_address: 172.18.0.37
+        ipv4_address: 172.18.0.48
     cap_add: [CHOWN, SETUID, SETGID, DAC_OVERRIDE]
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - OBSIDIAN_VERSION=1.12.7
     volumes:
-      - /opt/cryptex/data/notes-output:/usr/share/nginx/html:ro
-      - /opt/cryptex/configs/nginx/notes.conf:/etc/nginx/conf.d/default.conf:ro
+      - /opt/cryptex/data/pkm:/vaults/PKM
+      - /opt/cryptex/data/ignis:/app/data
+      - ignis_obsidian_app:/app/obsidian-app
     deploy:
       resources:
         limits:
-          memory: 64M
-          cpus: "0.10"
+          memory: 512M
+          cpus: "0.50"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:80/health 2>/dev/null || exit 1"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 5s
+      start_period: 30s
 
   # ── [REMOVED] quartz-builder — cron-only pattern is correct (see /opt/cryptex/scripts/quartz-build.sh)
 
@@ -1167,3 +1172,4 @@ services:
 volumes:
   redis_data:
   n8n_tools:
+  ignis_obsidian_app:

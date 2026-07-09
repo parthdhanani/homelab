@@ -91,3 +91,6 @@ dotfiles/claude/shell-snapshots/
 dotfiles/claude/jobs/
 dotfiles/claude/.credentials.json
 .claude/MEMORY.md
+
+# Ignis (vendored external repo, built locally — not our source)
+apps/ignis/

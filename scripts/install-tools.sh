@@ -47,9 +47,6 @@ ok "npm globals: claude-code, gemini-cli, claude-code-cache-fix, codeburn"
 step "Python tools"
 pip3 install --user --quiet \
     graphifyy \
-    mkdocs \
-    mkdocs-material \
-    mkdocs-roamlinks-plugin \
     watchdog \
     yamllint
 ok "Python tools installed"

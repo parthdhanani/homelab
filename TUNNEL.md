@@ -2,7 +2,7 @@
 
 The tunnel is dashboard-managed (token-only, no local config). This file is the
 local record to diff against — update it when routes change in the CF dashboard.
-Last verified: 2026-07-03.
+Last verified: 2026-07-09.
 
 | Hostname | Target | ZT Access |
 |---|---|---|
@@ -13,7 +13,7 @@ Last verified: 2026-07-03.
 | analytics.psidex.com | 172.18.0.44:3000 (umami) | Yes + Bypass /api/send |
 | status.psidex.com | 172.18.0.41:3001 (uptime-kuma) | None — public status page (exposes service names) |
 | docker.psidex.com | 172.18.0.40:3000 (dockhand) | Yes |
-| notes.psidex.com | 172.18.0.37:80 (notes nginx) | Yes + nginx JWT-header guard (defense-in-depth, 2026-06-11) |
+| notes.psidex.com | 172.18.0.48:8080 (cryptex-ignis, browser Obsidian on live PKM vault — replaces static MkDocs "notes" nginx, 2026-07-09) | Yes (CF Access only — no app-level guard, fully editable vault) |
 | aqua.psidex.com | 172.18.0.10:80 (portfolio) | None — public portfolio |
 | git.psidex.com | 172.18.0.31:3000 (forgejo) | Yes |
 | sb.psidex.com | 172.18.0.1:5050 (host sb-tool gunicorn, direct — nginx :8086 proxy unused) | **NONE — TODO: add ZT Access** |

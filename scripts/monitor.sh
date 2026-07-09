@@ -142,7 +142,6 @@ cron_age /var/log/cryptex-daily-report.log   "daily-report (6am)"
 cron_age /var/log/cryptex-updates.log        "container-notify (9am)"
 cron_age /var/log/cryptex-backup.log         "backup (3am)"
 cron_age /var/log/cryptex-backup-verify.log  "backup-verify (monthly)"
-cron_age /var/log/cryptex-notes.log          "notes-build (15min)"
 
 # health-check: log only written on failure — infer from cron process or last crontab run
 HC_LOG=/var/log/cryptex-health.log

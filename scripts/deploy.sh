@@ -286,7 +286,6 @@ alias cryptex='cd /opt/cryptex'
 alias pkm='cd /opt/cryptex/data/pkm'
 alias dps='docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}"'
 alias health='/opt/cryptex/scripts/health-check.sh'
-alias notes-build='docker run --rm -v /opt/cryptex/data/pkm:/vault:ro -v /opt/cryptex/data/quartz-output:/output -v /opt/cryptex/data/quartz-app:/app -w /app node:22-alpine sh -c "npx quartz build --directory /vault --output /output"'
 SHELLENV
 
 # ── Build custom images ──
