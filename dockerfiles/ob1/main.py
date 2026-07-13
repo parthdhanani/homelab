@@ -205,7 +205,15 @@ def _remember(content: str, source: str = "manual", tags: list[str] | None = Non
         release_db(conn)
 
 
-KEYWORD_BOOST = 0.15  # additive bump for exact-term hits embeddings underrate; capped at 0.999
+# Reciprocal Rank Fusion (Cormack et al. 2009) combines the vector and keyword rankings
+# by rank position rather than raw score magnitude — score = sum(1/(RRF_K + rank)) across
+# whichever lists a row appears in. This avoids the old flat-boost problem: on a corpus
+# where cosine similarities cluster tightly (e.g. many similar automated log entries),
+# a fixed +0.15 keyword bump was ~the only thing doing real discrimination, so ranking
+# degenerated to a near coin-flip on hit/no-hit rather than reflecting actual relevance.
+# Approach borrowed from tobi/qmd (github.com/tobi/qmd, MIT), which uses RRF to fuse its
+# BM25 and vector retrieval lists before reranking.
+RRF_K = 60
 
 
 def _search(query: str, k: int = 5) -> list[dict]:
@@ -231,11 +239,12 @@ def _search(query: str, k: int = 5) -> list[dict]:
     try:
         from psycopg2.extras import RealDictCursor
         cur = conn.cursor(cursor_factory=RealDictCursor)
+        params["rrf_k"] = RRF_K
         cur.execute(
             f"""WITH vector_hits AS (
                    SELECT id, content, source, tags, session_id, created_at, doc_id,
                           1 - (embedding <=> %(vec)s::vector) AS similarity,
-                          FALSE AS is_keyword_hit
+                          ROW_NUMBER() OVER (ORDER BY embedding <=> %(vec)s::vector) AS vec_rank
                    FROM memories
                    WHERE is_deleted = FALSE
                    ORDER BY embedding <=> %(vec)s::vector
@@ -244,16 +253,25 @@ def _search(query: str, k: int = 5) -> list[dict]:
                keyword_hits AS (
                    SELECT id, content, source, tags, session_id, created_at, doc_id,
                           1 - (embedding <=> %(vec)s::vector) AS similarity,
-                          TRUE AS is_keyword_hit
+                          ROW_NUMBER() OVER (ORDER BY ts_rank(search_vector, ({or_tsquery})) DESC) AS kw_rank
                    FROM memories
                    WHERE is_deleted = FALSE
                      AND search_vector @@ ({or_tsquery})
                    ORDER BY ts_rank(search_vector, ({or_tsquery})) DESC
                    LIMIT %(pool)s
                )
-               SELECT DISTINCT ON (id) *
-               FROM (SELECT * FROM vector_hits UNION ALL SELECT * FROM keyword_hits) merged
-               ORDER BY id, is_keyword_hit DESC""",
+               SELECT
+                   COALESCE(v.id, kw.id) AS id,
+                   COALESCE(v.content, kw.content) AS content,
+                   COALESCE(v.source, kw.source) AS source,
+                   COALESCE(v.tags, kw.tags) AS tags,
+                   COALESCE(v.created_at, kw.created_at) AS created_at,
+                   COALESCE(v.doc_id, kw.doc_id) AS doc_id,
+                   COALESCE(v.similarity, kw.similarity) AS similarity,
+                   (CASE WHEN v.vec_rank IS NOT NULL THEN 1.0 / (%(rrf_k)s + v.vec_rank) ELSE 0.0 END
+                    + CASE WHEN kw.kw_rank IS NOT NULL THEN 1.0 / (%(rrf_k)s + kw.kw_rank) ELSE 0.0 END) AS rrf_score
+               FROM vector_hits v
+               FULL OUTER JOIN keyword_hits kw ON v.id = kw.id""",
             params,
         )
         rows = cur.fetchall()
@@ -267,7 +285,7 @@ def _search(query: str, k: int = 5) -> list[dict]:
                 "similarity": round(float(r["similarity"]), 3),
                 "created_at": str(r["created_at"]),
                 "doc_id": r["doc_id"],
-                "_score": min(float(r["similarity"]) + (KEYWORD_BOOST if r["is_keyword_hit"] else 0.0), 0.999),
+                "_score": float(r["rrf_score"]),
             }
             for r in rows
         ]
