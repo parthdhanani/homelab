@@ -48,6 +48,14 @@ DEDUP_THRESHOLD = float(os.environ.get("OB1_DEDUP_THRESHOLD", 0.97))
 _db_pool: pgpool.ThreadedConnectionPool | None = None
 _embedder = None
 _embedder_lock = threading.Lock()
+_chunker = None
+_chunker_lock = threading.Lock()
+
+# nomic-embed-text-v1.5's 8192-token window means a single vector can technically cover
+# very long text, but recall degrades well before that on multi-topic documents — chunk
+# anything over this to keep each embedded unit close to one coherent idea.
+CHUNK_THRESHOLD_TOKENS = 400
+CHUNK_SIZE_TOKENS = 300
 
 
 def get_db():
@@ -78,6 +86,28 @@ def embed(text: str, kind: str = "document") -> list[float]:
     return next(model.embed([prefix + text])).tolist()
 
 
+def get_chunker():
+    global _chunker
+    with _chunker_lock:
+        if _chunker is None:
+            from chonkie import RecursiveChunker
+            _chunker = RecursiveChunker(chunk_size=CHUNK_SIZE_TOKENS)
+    return _chunker
+
+
+def chunk_text(content: str) -> list[str]:
+    """Splits content into chunks if it's long enough to need it; returns [content]
+    unchanged (one "chunk") for short content — callers always get a list, uniformly."""
+    chunker = get_chunker()
+    # cheap length pre-check avoids invoking the chunker's tokenizer on every short memory
+    if len(content) < CHUNK_THRESHOLD_TOKENS * 3:  # ~3 chars/token, rough but cheap
+        return [content]
+    chunks = chunker.chunk(content)
+    if len(chunks) <= 1:
+        return [content]
+    return [c.text for c in chunks]
+
+
 def init_db():
     conn = get_db()
     try:
@@ -100,6 +130,9 @@ def init_db():
             ALTER TABLE memories ADD COLUMN IF NOT EXISTS search_vector tsvector
                 GENERATED ALWAYS AS (to_tsvector('english', content)) STORED;
         """)
+        cur.execute("ALTER TABLE memories ADD COLUMN IF NOT EXISTS chunk_index INT NOT NULL DEFAULT 0;")
+        cur.execute("ALTER TABLE memories ADD COLUMN IF NOT EXISTS doc_id UUID;")
+        cur.execute("CREATE INDEX IF NOT EXISTS memories_doc_id_idx ON memories (doc_id);")
         cur.execute(f"""
             CREATE INDEX IF NOT EXISTS memories_embedding_idx
                 ON memories USING ivfflat (embedding vector_cosine_ops) WITH (lists = 50);
@@ -118,29 +151,56 @@ def init_db():
 def _remember(content: str, source: str = "manual", tags: list[str] | None = None, session_id: str = "") -> str:
     if not content.strip():
         return "Empty content — skipped."
-    vec = embed(content)
+
+    pieces = chunk_text(content)
+    if len(pieces) == 1:
+        # unchanged path — same dedup + insert behavior as before chunking existed.
+        vec = embed(content)
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """SELECT id, 1 - (embedding <=> %s::vector) AS similarity
+                   FROM memories
+                   WHERE is_deleted = FALSE
+                   ORDER BY embedding <=> %s::vector
+                   LIMIT 1""",
+                (vec, vec),
+            )
+            nearest = cur.fetchone()
+            if nearest and nearest[1] >= DEDUP_THRESHOLD:
+                return f"Duplicate of #{nearest[0]} (similarity {nearest[1]:.3f}) — skipped."
+            cur.execute(
+                "INSERT INTO memories (content, source, tags, embedding, session_id) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                (content, source, tags or [], vec, session_id or None),
+            )
+            mem_id = cur.fetchone()[0]
+            conn.commit()
+            cur.close()
+            return f"Stored memory #{mem_id}"
+        finally:
+            release_db(conn)
+
+    # multi-chunk path: skip whole-document dedup (a near-duplicate long document is rare
+    # and not what the debounce/dedup incidents this threshold guards against looked like —
+    # those were short, repeated content, which stays on the single-chunk path above).
+    import uuid
+    doc_id = str(uuid.uuid4())
     conn = get_db()
     try:
         cur = conn.cursor()
-        cur.execute(
-            """SELECT id, 1 - (embedding <=> %s::vector) AS similarity
-               FROM memories
-               WHERE is_deleted = FALSE
-               ORDER BY embedding <=> %s::vector
-               LIMIT 1""",
-            (vec, vec),
-        )
-        nearest = cur.fetchone()
-        if nearest and nearest[1] >= DEDUP_THRESHOLD:
-            return f"Duplicate of #{nearest[0]} (similarity {nearest[1]:.3f}) — skipped."
-        cur.execute(
-            "INSERT INTO memories (content, source, tags, embedding, session_id) VALUES (%s, %s, %s, %s, %s) RETURNING id",
-            (content, source, tags or [], vec, session_id or None),
-        )
-        mem_id = cur.fetchone()[0]
+        ids = []
+        for idx, piece in enumerate(pieces):
+            vec = embed(piece)
+            cur.execute(
+                "INSERT INTO memories (content, source, tags, embedding, session_id, doc_id, chunk_index) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id",
+                (piece, source, tags or [], vec, session_id or None, doc_id, idx),
+            )
+            ids.append(cur.fetchone()[0])
         conn.commit()
         cur.close()
-        return f"Stored memory #{mem_id}"
+        return f"Stored memory as {len(ids)} chunks (doc_id={doc_id}, ids={ids[0]}-{ids[-1]})"
     finally:
         release_db(conn)
 
@@ -173,7 +233,7 @@ def _search(query: str, k: int = 5) -> list[dict]:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(
             f"""WITH vector_hits AS (
-                   SELECT id, content, source, tags, session_id, created_at,
+                   SELECT id, content, source, tags, session_id, created_at, doc_id,
                           1 - (embedding <=> %(vec)s::vector) AS similarity,
                           FALSE AS is_keyword_hit
                    FROM memories
@@ -182,7 +242,7 @@ def _search(query: str, k: int = 5) -> list[dict]:
                    LIMIT %(pool)s
                ),
                keyword_hits AS (
-                   SELECT id, content, source, tags, session_id, created_at,
+                   SELECT id, content, source, tags, session_id, created_at, doc_id,
                           1 - (embedding <=> %(vec)s::vector) AS similarity,
                           TRUE AS is_keyword_hit
                    FROM memories
@@ -206,13 +266,28 @@ def _search(query: str, k: int = 5) -> list[dict]:
                 "tags": r["tags"],
                 "similarity": round(float(r["similarity"]), 3),
                 "created_at": str(r["created_at"]),
+                "doc_id": r["doc_id"],
                 "_score": min(float(r["similarity"]) + (KEYWORD_BOOST if r["is_keyword_hit"] else 0.0), 0.999),
             }
             for r in rows
         ]
+        # collapse multiple chunk-hits from the same document to its single best-scoring
+        # chunk — otherwise one long chunked doc can flood the top-k with itself. Rows with
+        # no doc_id (the common case: un-chunked memories) are never grouped with each other.
+        best_per_doc: dict[str, dict] = {}
+        standalone = []
+        for r in results:
+            if r["doc_id"] is None:
+                standalone.append(r)
+                continue
+            key = r["doc_id"]
+            if key not in best_per_doc or r["_score"] > best_per_doc[key]["_score"]:
+                best_per_doc[key] = r
+        results = standalone + list(best_per_doc.values())
         results.sort(key=lambda r: r["_score"], reverse=True)
         for r in results:
             del r["_score"]
+            del r["doc_id"]
         return results[:k]
     finally:
         release_db(conn)

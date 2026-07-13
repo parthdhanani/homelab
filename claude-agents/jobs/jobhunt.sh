@@ -9,6 +9,37 @@ PROFILE=$(cat "$AGENT_CONFIG/jobhunt.md" 2>/dev/null)
 [ -z "$PROFILE" ] && { log "no jobhunt profile configured"; exit 0; }
 QUEUE="10 Projects/job-queue.md"
 
+# filter_dead_links "<result markdown>"  — drops numbered role entries whose application
+# link 404s/410s/fails to connect. Only known-dead codes are dropped; 403/999/5xx are kept
+# (LinkedIn and other boards routinely bot-block curl with these — can't distinguish that
+# from a real dead link, so err toward keeping and let you judge).
+filter_dead_links() {
+    local input="$1" dir kept=0 dropped=0 kept_text=""
+    dir=$(mktemp -d)
+    awk -v d="$dir" '/^[0-9]+\. \*\*/ { n++ } n>0 { print > (d "/" n) }' <<<"$input"
+
+    for f in "$dir"/*; do
+        [ -f "$f" ] || continue
+        block=$(cat "$f")
+        url=$(printf '%s' "$block" | grep -oE 'https?://[^ )>\]]+' | head -1)
+        if [ -z "$url" ]; then
+            kept_text+="$block"$'\n'; kept=$((kept + 1)); continue
+        fi
+        code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 --max-redirs 5 -L \
+               -A 'Mozilla/5.0 (claude-agents jobhunt)' "$url" 2>/dev/null)
+        if [ "$code" = "404" ] || [ "$code" = "410" ] || [ "$code" = "000" ]; then
+            log "dropping dead link ($code): $url"
+            dropped=$((dropped + 1))
+        else
+            kept_text+="$block"$'\n'; kept=$((kept + 1))
+        fi
+    done
+    rm -rf "$dir"
+
+    [ "$dropped" -gt 0 ] && kept_text+=$'\n'"_(link check: $kept kept, $dropped dropped as dead)_"
+    printf '%s' "$kept_text"
+}
+
 SEEN="$AGENT_STATE/jobhunt-seen.tsv"   # DATE<tab>ROLE @ COMPANY — avoids re-mailing the same listing daily
 touch "$SEEN"
 cutoff10=$(date -u -d '10 days ago' +%F 2>/dev/null || date -u -v-10d +%F)
@@ -36,6 +67,12 @@ RESULT=$(run_agy "$PROMPT") || { log "claude failed"; exit 1; }
 
 if printf '%s' "$RESULT" | grep -qi 'NOTHING NEW TODAY'; then
     log "nothing new — not mailing (avoids re-nagging with stale drafts)"
+    exit 0
+fi
+
+RESULT=$(filter_dead_links "$RESULT")
+if [ -z "$(printf '%s' "$RESULT" | grep -oE '\*\*[^*]+@[^*]+\*\*')" ]; then
+    log "all drafted roles had dead links — nothing valid to send"
     exit 0
 fi
 

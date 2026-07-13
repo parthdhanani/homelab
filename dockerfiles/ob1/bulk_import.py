@@ -13,9 +13,12 @@ import sys
 import time
 from pathlib import Path
 
+import uuid
+
 import psycopg2
 from pgvector.psycopg2 import register_vector
 from fastembed import TextEmbedding
+from chonkie import RecursiveChunker
 
 DB_CONFIG = {
     "host": os.environ.get("DB_HOST", "cryptex-pgvector"),
@@ -27,6 +30,17 @@ DB_CONFIG = {
 
 MODEL_NAME = "nomic-ai/nomic-embed-text-v1.5"
 BATCH_SIZE = 32
+CHUNK_THRESHOLD_TOKENS = 400
+CHUNK_SIZE_TOKENS = 300
+
+
+def chunk_text(chunker, content: str) -> list[str]:
+    if len(content) < CHUNK_THRESHOLD_TOKENS * 3:
+        return [content]
+    chunks = chunker.chunk(content)
+    if len(chunks) <= 1:
+        return [content]
+    return [c.text for c in chunks]
 
 
 def already_indexed(conn, source: str) -> set[str]:
@@ -51,6 +65,7 @@ def import_directory(root: Path, dry: bool = False):
 
     print(f"Loading embedding model {MODEL_NAME} (may download)...")
     embedder = TextEmbedding(MODEL_NAME)
+    chunker = RecursiveChunker(chunk_size=CHUNK_SIZE_TOKENS)
     print("Model ready.")
 
     conn = psycopg2.connect(**DB_CONFIG)
@@ -77,14 +92,22 @@ def import_directory(root: Path, dry: bool = False):
                 skip += 1
                 continue
 
-            # Truncate to ~2000 chars for embedding (nomic handles up to 8192 tokens)
-            text = content[:4000]
-            vec = next(embedder.embed([text])).tolist()
-
-            cur.execute(
-                "INSERT INTO memories (content, source, tags, embedding) VALUES (%s, %s, %s, %s)",
-                (content[:2000], source_key, ["pkm"], vec),
-            )
+            pieces = chunk_text(chunker, content)
+            if len(pieces) == 1:
+                vec = next(embedder.embed([content])).tolist()
+                cur.execute(
+                    "INSERT INTO memories (content, source, tags, embedding) VALUES (%s, %s, %s, %s)",
+                    (content, source_key, ["pkm"], vec),
+                )
+            else:
+                doc_id = str(uuid.uuid4())
+                for idx, piece in enumerate(pieces):
+                    vec = next(embedder.embed([piece])).tolist()
+                    cur.execute(
+                        "INSERT INTO memories (content, source, tags, embedding, doc_id, chunk_index) "
+                        "VALUES (%s, %s, %s, %s, %s, %s)",
+                        (piece, source_key, ["pkm"], vec, doc_id, idx),
+                    )
             ok += 1
 
             if ok % BATCH_SIZE == 0:

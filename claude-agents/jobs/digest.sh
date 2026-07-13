@@ -10,14 +10,18 @@ MEM=$(free -h | awk '/Mem:/{print $3" used / "$2" total"}')
 FAILED=$(systemctl --failed --no-legend 2>/dev/null | awk '{print $1}' | tr '\n' ' '); FAILED="${FAILED:-none}"
 CONTAINERS=$(docker ps -q 2>/dev/null | wc -l)
 UNHEALTHY=$(docker ps --filter health=unhealthy --format '{{.Names}}' 2>/dev/null | tr '\n' ' '); UNHEALTHY="${UNHEALTHY:-none}"
+JOBHUNT=$(python3 "$AGENT_HOME/lib/jobstats.py" --days 7 2>/dev/null || echo "unavailable")
 
 FACTS="OB1 $OB1
 Disk: $DISK
 Mem: $MEM
 Failed systemd units: $FAILED
-Containers running: $CONTAINERS | unhealthy: $UNHEALTHY"
+Containers running: $CONTAINERS | unhealthy: $UNHEALTHY
+Job search this week: $JOBHUNT"
 
 PROMPT="Here is the raw weekly state of my self-hosted system. Write me a short 'state of your world' digest: lead with anything that needs my attention (failures, disk pressure), then a one-line all-clear for what's healthy. Be honest and brief — no cheerleading. If everything's fine, say so in 2 lines.
+
+Separately, always report the 'Job search this week' line plainly and without softening — it's drafted roles vs. Gmail-confirmed real applications sent. If applied is 0 or far below drafted, say that bluntly; do not spin it positively.
 
 $FACTS"
 

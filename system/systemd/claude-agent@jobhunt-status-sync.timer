@@ -1,0 +1,10 @@
+[Unit]
+Description=claude-agent jobhunt-status-sync (Gmail application/status detection, 3x/week)
+
+[Timer]
+OnCalendar=Mon,Wed,Fri *-*-* 02:45:00
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

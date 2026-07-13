@@ -22,7 +22,7 @@ if [ "$job" = "selftest" ]; then
     h1=$(printf 'abc' | md5sum); h2=$(printf 'abd' | md5sum)
     [ "$h1" != "$h2" ] && echo "PASS: hash differs on change" || { echo "FAIL: hash"; fail=1; }
     echo "test" | normalize | grep -q test && echo "PASS: normalize()" || { echo "FAIL: normalize"; fail=1; }
-    for j in news monitor jobhunt digest ops github movies deepdive; do
+    for j in news monitor jobhunt jobhunt-status-sync digest ops github movies deepdive; do
         bash -n "$AGENT_HOME/jobs/$j.sh" && echo "PASS: syntax jobs/$j.sh" || { echo "FAIL: syntax $j"; fail=1; }
     done
     [ $fail -eq 0 ] && echo "== SELFTEST OK ==" || echo "== SELFTEST FAILED =="
