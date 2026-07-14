@@ -27,8 +27,10 @@ print(json.dumps({
 
 [ -z "$PAYLOAD" ] && exit 0
 
+OB1_TOKEN=$(cat /home/ubuntu/.claude/secrets/ob1.token 2>/dev/null)
 curl -sf --max-time 5 -X POST \
     -H "Content-Type: application/json" \
+    ${OB1_TOKEN:+-H "Authorization: Bearer $OB1_TOKEN"} \
     -d "$PAYLOAD" \
     "$OB1_URL" 2>/dev/null || true
 

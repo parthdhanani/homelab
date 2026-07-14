@@ -1,0 +1,41 @@
+# Shared gitleaks config for all repos using core.hooksPath = ~/.git-hooks
+# Single source of truth: both pre-commit (staged scan) and pre-push (range scan)
+# pass this via `-c`. To evolve the ruleset, edit THIS file only.
+#
+# History: the 2026-07-05 leak was a bare `openssl rand -hex 24` DoH token baked
+# into a .mobileconfig. Stock gitleaks rules key off known prefixes (ghp_, AKIA,
+# sk_live_, ...) and do NOT reliably catch a prefix-less hex blob — so the custom
+# rule + path-denylist below exist specifically to cover that failure mode.
+
+title = "shared gitleaks config (~/.git-hooks)"
+
+[extend]
+useDefault = true
+
+# --- Custom rule: long hex secrets in credential-bearing files -----------------
+# Narrowly scoped by PATH so it does not fire on git SHAs, lockfile hashes, or
+# checksums elsewhere in the tree. Any >=32-char lowercase-hex run inside a
+# device profile / env / dns-token / dotenv file is treated as a live secret.
+[[rules]]
+id = "hex-token-in-secret-bearing-file"
+description = "High-entropy hex token in a credential-bearing file (mobileconfig/env/dns-tokens)"
+regex = '''[a-f0-9]{32,}'''
+path = '''(\.mobileconfig|\.dns-tokens\.env|(^|/)\.env(\.[^/]+)?|dns-doh-proxy\.conf)$'''
+entropy = 3.0
+keywords = []
+
+[allowlist]
+description = "known template placeholders + non-secret paths (superset of cryptex allowlist)"
+paths = [
+  '''secrets\.env\.template''',
+  '''dotfiles/claude/skill-library/.*''',
+  '''.*\.gitleaks\.toml''',
+  '''.*/gitleaks-shared\.toml''',
+]
+regexes = [
+  '''YOUR_AUTH_TOKEN''',
+  '''your_personal_api_key''',
+  '''phx_your_personal_api_key''',
+  '''SCRUBBED_[A-Z_]+''',
+  '''PASTE_YOUR_[A-Z_]+''',
+]

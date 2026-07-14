@@ -28,8 +28,9 @@ done
 
 [ -z "$range" ] && exit 0
 
+CONFIG="$(cd "$(dirname "$0")" && pwd)/gitleaks-shared.toml"
 echo "pre-push: scanning $range for secrets before pushing to public $remote ($url)..." >&2
-if ! gitleaks detect --source . --log-opts "$range" -v; then
+if ! gitleaks git -c "$CONFIG" --log-opts "$range" -v; then
   echo "pre-push BLOCKED: gitleaks found potential secrets in commits being pushed to $remote." >&2
   echo "Review the findings above. If they are real, fix and re-commit. If false positives, add to .gitleaks.toml allowlist and retry." >&2
   exit 1

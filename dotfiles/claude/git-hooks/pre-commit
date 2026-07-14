@@ -1,0 +1,49 @@
+#!/bin/bash
+# Commit-time secret gate for every repo using core.hooksPath = ~/.git-hooks.
+#
+# Two layers, both deterministic:
+#   1. Path denylist  — inherently-secret file types (e.g. *.mobileconfig) can
+#      never be committed at all. This is the belt for the 2026-07-05 leak: a
+#      device profile MUST embed a live token to function, so the file itself is
+#      the hazard, independent of what regex would/wouldn't match inside it.
+#   2. gitleaks staged scan — content scan of the staged diff using the shared
+#      config (~/.git-hooks/gitleaks-shared.toml).
+#
+# Philosophy matches the sibling pre-push hook: fail CLOSED on a real finding,
+# fail OPEN (warn, allow) if gitleaks is missing — never brick a commit because
+# tooling isn't installed. Bypass a single false-positive commit with `--no-verify`.
+
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+CONFIG="$HOOK_DIR/gitleaks-shared.toml"
+
+# --- Layer 1: path denylist ---------------------------------------------------
+# Newly-added or modified files whose extension is inherently secret-bearing.
+denylist_re='\.mobileconfig$'
+blocked=$(git diff --cached --name-only --diff-filter=AM | grep -E "$denylist_re")
+if [ -n "$blocked" ]; then
+  echo "pre-commit BLOCKED: refusing to commit inherently-secret file(s):" >&2
+  echo "$blocked" | sed 's/^/  - /' >&2
+  echo "These file types embed live secrets by design and must stay local/gitignored." >&2
+  echo "If this is genuinely a scrubbed template, rename it or commit with --no-verify." >&2
+  exit 1
+fi
+
+# --- Layer 2: gitleaks staged scan -------------------------------------------
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks not found, skipping staged secret scan (install it before relying on this)" >&2
+  exit 0
+fi
+
+# Nothing staged → nothing to scan (e.g. `git commit --amend` with no changes).
+if git diff --cached --quiet; then
+  exit 0
+fi
+
+if ! gitleaks git --staged -c "$CONFIG" --no-banner --redact; then
+  echo "pre-commit BLOCKED: gitleaks found potential secrets in staged changes." >&2
+  echo "Review above. If real, unstage/fix. If a false positive, add it to the" >&2
+  echo "allowlist in $CONFIG, or commit this once with --no-verify." >&2
+  exit 1
+fi
+
+exit 0
