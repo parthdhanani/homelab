@@ -94,3 +94,4 @@ dotfiles/claude/.credentials.json
 
 # Ignis (vendored external repo, built locally — not our source)
 apps/ignis/
+.code-review-graph/

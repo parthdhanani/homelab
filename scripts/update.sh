@@ -164,3 +164,8 @@ fi
 
 echo ""
 echo "Update complete."
+
+# Weekly prune, inlined from root crontab 2026-07-19 (plan §7/06 unify): runs AFTER rollback
+# tags are set so prune can never race the update's own rollback targets.
+{ docker container prune -f; docker network prune -f; docker image prune -f; docker volume prune -f --filter label!=cryptex; } >> /var/log/cryptex-prune.log 2>&1 || true
+echo "Prune complete (inline)."

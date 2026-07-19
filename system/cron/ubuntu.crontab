@@ -1,1 +1,2 @@
-# ubuntu crontab intentionally empty — all cryptex jobs consolidated into root crontab (2026-05-30)
+23 5 * * 1 /home/ubuntu/.claude/scripts/jobs-cleanup.sh
+0 8 1 1,4,7,10 * /home/ubuntu/.claude/scripts/notify.sh "quarterly close-the-loop review due" "30 min: read the last self-audit emails, kill anything with zero reads/uses this quarter. Rule: no new framework evals without a felt pain first. (plan 5.4)"
