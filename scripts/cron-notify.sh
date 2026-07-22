@@ -3,8 +3,11 @@
 # Thin wrapper: runs a script, emails on non-zero exit via msmtp.
 # Usage in crontab: cron-notify.sh /opt/cryptex/scripts/foo.sh >> /var/log/foo.log 2>&1
 
-# cron has a bare env — pull ADMIN_EMAIL/DOMAIN from the stack .env
+# cron has a bare env — pull ADMIN_EMAIL/DOMAIN from the stack .env and export so
+# the wrapped script (run via "$@" below) inherits them too, not just this shell
+set -a
 source /opt/cryptex/.env 2>/dev/null || true
+set +a
 
 SCRIPT="$1"
 TO="${ADMIN_EMAIL:-admin@${DOMAIN:-yourdomain.com}}"

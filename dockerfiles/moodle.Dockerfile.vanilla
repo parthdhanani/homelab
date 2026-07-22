@@ -57,7 +57,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sodium \
     exif \
     xsl \
-  && pecl install redis \
+  && pecl install https://pecl.php.net/get/redis-6.3.0.tgz \
   && docker-php-ext-enable redis \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
