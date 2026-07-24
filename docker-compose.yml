@@ -127,7 +127,7 @@ services:
   # 3. Cloudflared — Cloudflare Tunnel (outbound only)
   cloudflared:
     <<: *defaults
-    image: cloudflare/cloudflared:2026.6.1
+    image: cloudflare/cloudflared:2026.7.3
     container_name: cryptex-cloudflared
     networks:
       cryptex_net:
@@ -462,7 +462,7 @@ services:
 
   n8n:
     <<: *defaults
-    image: n8nio/n8n:2.29.9
+    image: n8nio/n8n:2.32.4
     container_name: cryptex-n8n
     user: "1000:1000"
     ports:
@@ -535,7 +535,7 @@ services:
   # Port 53 exposed to host for Tailscale DNS routing
   adguard:
     <<: *defaults
-    image: adguard/adguardhome:v0.107.77
+    image: adguard/adguardhome:v0.107.78
     container_name: cryptex-adguard
     networks:
       cryptex_net:
@@ -700,7 +700,7 @@ services:
   shlink:
     profiles: ["disabled"]
     <<: *defaults
-    image: shlinkio/shlink:5.0.2
+    image: shlinkio/shlink:5.1.5
     container_name: cryptex-shlink
     networks:
       cryptex_net:
@@ -738,7 +738,7 @@ services:
   shlink-web:
     profiles: ["disabled"]
     <<: *defaults
-    image: shlinkio/shlink-web-client:4.7.0
+    image: shlinkio/shlink-web-client:4.8.0
     container_name: cryptex-shlink-web
     networks:
       cryptex_net:
@@ -814,7 +814,7 @@ services:
   miniflux:
     profiles: ["disabled"]
     <<: *defaults
-    image: miniflux/miniflux:2.2.19
+    image: miniflux/miniflux:2.3.2
     container_name: cryptex-miniflux
     networks:
       cryptex_net:
@@ -862,7 +862,7 @@ services:
   actualbudget:
     profiles: ["disabled"]
     <<: *defaults
-    image: actualbudget/actual-server:26.5.2
+    image: actualbudget/actual-server:26.7.0
     container_name: cryptex-actualbudget
     user: "1001:1001"
     networks:
@@ -977,7 +977,7 @@ services:
   searxng:
     profiles: ["disabled"]
     <<: *defaults
-    image: searxng/searxng:2026.5.9-849e17e43
+    image: searxng/searxng:2026.7.22-ef8f6470e
     container_name: cryptex-searxng
     networks:
       cryptex_net:
@@ -1008,7 +1008,7 @@ services:
   alist:
     profiles: ["disabled"]
     <<: *defaults
-    image: openlistteam/openlist:v4.2.1
+    image: openlistteam/openlist:v4.2.4
     container_name: cryptex-alist
     networks:
       cryptex_net:
@@ -1036,7 +1036,7 @@ services:
   stirling-pdf:
     profiles: ["disabled"]
     <<: *defaults
-    image: frooodle/s-pdf:2.10.1
+    image: frooodle/s-pdf:2.14.2
     container_name: cryptex-stirling-pdf
     networks:
       cryptex_net:
