@@ -26,7 +26,7 @@ if [ $rc -ne 0 ]; then
         printf "Exit code: %s\n" "$rc"
         printf "Time:      %s\n\n" "$TS"
         printf "%s\n" "$output"
-    ) | msmtp --from=default "$TO" 2>/dev/null || true
+    ) | msmtp --from=default "$TO" || echo "cron-notify.sh: FAILED to send failure-alert email for $LABEL (rc=$?)" >&2
 fi
 
 # Echo output so cron log still captures it

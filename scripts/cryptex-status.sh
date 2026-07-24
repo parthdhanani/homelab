@@ -37,6 +37,18 @@ df -h / | awk 'NR==2 {print "disk: "$3" / "$2" ("$5")"}'
 free -h | awk '/^Mem:/ {print "mem:  "$3" / "$2}'
 OOM=$(sudo -n journalctl -u earlyoom --since '-24h' --no-pager 2>/dev/null | command grep -ciE 'SIG(TERM|KILL) to process')
 [ "${OOM:-0}" -gt 0 ] && W "earlyoom killed ${OOM} process(es) in 24h"
+MEMUSE=$(free | awk '/^Mem:/{printf "%d", $3/$2*100}')
+if [ "${MEMUSE:-0}" -ge 85 ]; then
+    TOP3=$(docker stats --no-stream --format '{{.Name}} {{.MemUsage}}' 2>/dev/null | sort -k2 -h | tail -3 | tr '\n' ';')
+    W "host RAM at ${MEMUSE}% (top: $TOP3)"
+fi
+EXITED=$(docker ps -a --filter status=exited --format '{{.Names}} {{.Status}}' 2>/dev/null | command grep -v 'Exited (0' | head -5)
+[ -n "$EXITED" ] && W "exited containers: $EXITED"
+CERT_EXP=$(echo | timeout 10 openssl s_client -servername psidex.com -connect psidex.com:443 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+if [ -n "$CERT_EXP" ]; then
+    CERT_DAYS=$(( ($(date -d "$CERT_EXP" +%s) - $(date +%s)) / 86400 ))
+    [ "$CERT_DAYS" -lt 14 ] && W "TLS cert psidex.com expires in ${CERT_DAYS}d"
+fi
 
 echo "== ob1 =="
 H=$(curl -sf --max-time 3 http://172.18.0.52:8000/health || curl -sf --max-time 3 http://127.0.0.1:8000/health)

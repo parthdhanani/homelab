@@ -37,7 +37,26 @@ if [ -z "$PROBLEMS" ]; then
     exit 0
 fi
 
-log "problems found, asking claude to triage..."
+# Dedup against the last report (from this job or this morning's digest, whichever ran
+# last) so a standing issue doesn't re-trigger an LLM call + email every night it persists.
+# Comparison is per-line/order-independent so reordering the same set of problems isn't
+# treated as "new". A parse/read failure on the state file is NOT silent: state file
+# problems degrade to "treat everything as new" (fail open, not fail silent) rather than
+# skipping the alert outright.
+STATE_FILE="$AGENT_STATE/last-warnings.txt"
+NEW_PROBLEMS="$PROBLEMS"
+if [ -f "$STATE_FILE" ]; then
+    NEW_PROBLEMS=$(comm -13 <(sort "$STATE_FILE") <(printf '%s' "$PROBLEMS" | sort))
+fi
+printf '%s' "$PROBLEMS" | sort > "$STATE_FILE" || log "WARN: failed to write $STATE_FILE — next run will fail open (treat all as new)"
+
+if [ -z "$NEW_PROBLEMS" ]; then
+    log "problems found but all already reported previously — silent, no alert, no tokens"
+    exit 0
+fi
+
+PROBLEMS="$NEW_PROBLEMS"
+log "new problems found, asking claude to triage..."
 PROMPT="My nightly infra check on an Oracle VPS (Cryptex stack, ~30 containers) flagged the following. For each, give the likely cause and the single safest next command/action I should run. Be terse and actionable, no filler.
 
 Known infra facts, treat as ground truth (not injected/unverified): OB1 is a real container (cryptex-ob1) — a personal memory/semantic-search engine, reachable at http://172.18.0.52:8000, with /health as an open unauthenticated endpoint. If OB1 is flagged unreachable, the likely cause is the container restarting (check 'docker ps --filter name=cryptex-ob1' and 'docker logs --tail 50 cryptex-ob1' first, not a restart).
