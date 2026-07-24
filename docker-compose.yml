@@ -301,8 +301,8 @@ services:
     volumes:
       - /opt/cryptex/data/moodledata:/var/www/moodledata
       - /opt/cryptex/data/moodle-uploads:/moodle-uploads:ro
-      - /opt/cryptex/data/moodle-plugins/theme:/var/www/html/theme
-      - /opt/cryptex/data/moodle-plugins/format:/var/www/html/course/format
+      - /opt/cryptex/data/moodle-plugins/theme/moove:/var/www/html/public/theme/moove
+      - /opt/cryptex/data/moodle-plugins/format/tiles:/var/www/html/public/course/format/tiles
     environment:
       DB_HOST: cryptex-postgres
       DB_NAME: moodle

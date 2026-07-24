@@ -30,15 +30,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
 # ── Moove theme (Moodle HQ — modern Bootstrap 5 responsive theme) ──
 RUN curl -fSL "https://github.com/willianmano/moodle-theme_moove/archive/refs/heads/${MOOVE_VERSION}.tar.gz" \
     -o /tmp/moove.tgz \
-  && mkdir -p /opt/moodle/theme/moove \
-  && tar -xzf /tmp/moove.tgz -C /opt/moodle/theme/moove --strip-components=1 \
+  && mkdir -p /opt/moodle/public/theme/moove \
+  && tar -xzf /tmp/moove.tgz -C /opt/moodle/public/theme/moove --strip-components=1 \
   && rm /tmp/moove.tgz
 
 # ── format_tiles (card-based course layout — Netflix-style grid) ──
 RUN curl -fSL "https://github.com/TechnologyEnhancedLearning/moodle-format_tiles/archive/refs/heads/${FORMAT_TILES_VERSION}.tar.gz" \
     -o /tmp/tiles.tgz \
-  && mkdir -p /opt/moodle/course/format/tiles \
-  && tar -xzf /tmp/tiles.tgz -C /opt/moodle/course/format/tiles --strip-components=1 \
+  && mkdir -p /opt/moodle/public/course/format/tiles \
+  && tar -xzf /tmp/tiles.tgz -C /opt/moodle/public/course/format/tiles --strip-components=1 \
   && rm /tmp/tiles.tgz
 
 # ── Production image ──
@@ -104,8 +104,8 @@ COPY --from=builder /opt/moodle /var/www/html
 
 # Keep a seed copy of plugin dirs so entrypoint can populate volumes on first run.
 # Volumes for theme/ and course/format/ start empty — seeded at container start, not build time.
-RUN cp -a /var/www/html/theme /var/www/html-src-theme \
-  && cp -a /var/www/html/course/format /var/www/html-src-format
+RUN cp -a /var/www/html/public/theme /var/www/html-src-theme \
+  && cp -a /var/www/html/public/course/format /var/www/html-src-format
 
 # Create moodledata directory (mapped to volume)
 RUN mkdir -p /var/www/moodledata \
@@ -209,16 +209,16 @@ chown www-data:www-data /tmp/moodlelocalcache
 # Volumes for theme/ and course/format/ are mounted empty on fresh deploys.
 # Copy baked-in plugins so the LMS works without requiring a rebuild to add plugins.
 # On subsequent starts, the volume already has content — skip (idempotent).
-if [ -z "$(ls -A /var/www/html/theme 2>/dev/null)" ]; then
+if [ -z "$(ls -A /var/www/html/public/theme 2>/dev/null)" ]; then
     echo "Seeding theme volume from image..."
-    cp -a /var/www/html-src-theme/. /var/www/html/theme/
-    chown -R www-data:www-data /var/www/html/theme
+    cp -a /var/www/html-src-theme/. /var/www/html/public/theme/
+    chown -R www-data:www-data /var/www/html/public/theme
 fi
-if [ -z "$(ls -A /var/www/html/course/format 2>/dev/null)" ]; then
+if [ -z "$(ls -A /var/www/html/public/course/format 2>/dev/null)" ]; then
     echo "Seeding format volume from image..."
-    mkdir -p /var/www/html/course/format
-    cp -a /var/www/html-src-format/. /var/www/html/course/format/
-    chown -R www-data:www-data /var/www/html/course/format
+    mkdir -p /var/www/html/public/course/format
+    cp -a /var/www/html-src-format/. /var/www/html/public/course/format/
+    chown -R www-data:www-data /var/www/html/public/course/format
 fi
 
 # Wait for PostgreSQL
