@@ -143,6 +143,11 @@ while IFS=' ' read -r CNAME IMAGE; do
     [ "$LOCAL_DIGEST" != "$REMOTE_DIGEST" ] && UPDATES+=("  $CNAME  →  $IMAGE")
 done < <(docker ps --format '{{.Names}} {{.Image}}' 2>/dev/null)
 
+# Cron runs this as root; manual runs and --selftest are ubuntu. The state dir is
+# setgid root:ubuntu, so umask 002 keeps a recreated state file group-writable and both
+# callers can maintain it. Without this a root-created 644 file would silently force
+# every later ubuntu run to fail open and re-notify.
+umask 002
 mkdir -p "$(dirname "$STATE_FILE")" 2>/dev/null
 
 if [ ${#UPDATES[@]} -eq 0 ]; then
