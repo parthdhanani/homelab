@@ -1,0 +1,10 @@
+[Unit]
+Description=claude-agent duel (weekly taste duel invite, Sun ~19:40 IST)
+
+[Timer]
+OnCalendar=Sun *-*-* 14:07:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

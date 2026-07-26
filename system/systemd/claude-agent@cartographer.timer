@@ -1,0 +1,12 @@
+[Unit]
+Description=Cartographer — remap the collections (monthly)
+
+[Timer]
+# Monthly, not weekly: the collection changes slowly and each pass rewrites the MOC
+# wholesale. Re-running it weekly would burn tokens to produce near-identical output.
+OnCalendar=*-*-01 04:23:00
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target
