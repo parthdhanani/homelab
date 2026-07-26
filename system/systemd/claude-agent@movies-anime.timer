@@ -1,0 +1,13 @@
+[Unit]
+Description=claude-agent movies-anime (fortnightly Anime pick, Wed ~19:40 IST)
+
+[Timer]
+# Fortnightly, not weekly: a series takes weeks to finish, so a weekly pick would outpace
+# actual watching and triple the Saturday mail volume. Day-of-month ranges give week 1+3
+# (tv) / week 2+4 (anime), so the two alternate and only one lands in any given week.
+OnCalendar=Wed *-*-8..14,22..28 14:13:00
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

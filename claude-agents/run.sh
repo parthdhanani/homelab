@@ -4,7 +4,7 @@
 AGENT_HOME="/home/ubuntu/claude-agents"
 job="${1:-}"
 
-[ -z "$job" ] && { echo "usage: run.sh <news|monitor|jobhunt|digest|ops|github|movies|deepdive|selftest>"; exit 2; }
+[ -z "$job" ] && { echo "usage: run.sh <news|monitor|jobhunt|digest|ops|github|movies[-tv|-anime]|deepdive|selftest>"; exit 2; }
 
 if [ -f "$AGENT_HOME/config/PAUSED" ]; then
     [ "$job" != "selftest" ] && { echo "$(date -u +%FT%TZ) [$job] System paused via config/PAUSED, skip" >> "$AGENT_HOME/logs/$job.log"; exit 0; }
@@ -22,9 +22,10 @@ if [ "$job" = "selftest" ]; then
     h1=$(printf 'abc' | md5sum); h2=$(printf 'abd' | md5sum)
     [ "$h1" != "$h2" ] && echo "PASS: hash differs on change" || { echo "FAIL: hash"; fail=1; }
     echo "test" | normalize | grep -q test && echo "PASS: normalize()" || { echo "FAIL: normalize"; fail=1; }
-    for j in news monitor jobhunt jobhunt-status-sync digest ops github movies deepdive; do
+    for j in news monitor jobhunt jobhunt-status-sync digest ops github movies movies-tv movies-anime deepdive; do
         bash -n "$AGENT_HOME/jobs/$j.sh" && echo "PASS: syntax jobs/$j.sh" || { echo "FAIL: syntax $j"; fail=1; }
     done
+    bash "$AGENT_HOME/lib/test_pick.sh" >/dev/null && echo "PASS: pick-title regex (year ranges)" || { echo "FAIL: pick-title regex"; fail=1; }
     [ $fail -eq 0 ] && echo "== SELFTEST OK ==" || echo "== SELFTEST FAILED =="
     exit $fail
 fi

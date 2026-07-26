@@ -1,15 +1,39 @@
 #!/bin/bash
-# movies.sh — weekly hidden-gem movie pick from your own to-watch list (Sat evening IST).
+# movies.sh — weekly hidden-gem pick from your own to-watch list (Sat evening IST).
 # Single purpose: one pick, taste-matched from your watched genres, with poster + best-effort
 # OTT/subtitle info (verify before pressing play — streaming availability changes fast).
-JOB=movies
+#
+# Takes an optional collection argument: movies (default) | tv | anime. Parameterised rather
+# than copied because the pick logic is identical across all three — only the directory, the
+# noun in the prompt, and the seen-list differ. TV and Anime had no picker at all until
+# 2026-07-26; they were unpickable before that because 31/42 and 41/43 of their notes were
+# metadata-less stubs, which enrich.py has now filled in.
+# Invoked either directly with an argument (`movies.sh tv`) or via run.sh through the
+# movies-tv.sh / movies-anime.sh symlinks — run.sh derives the script path from the job name,
+# so the symlink name is what carries the collection when there is no argument. Keeping the
+# job names distinct is what gives each collection its own lockfile and log.
+ARG="${1:-}"
+if [ -z "$ARG" ]; then
+    case "$(basename "$0" .sh)" in
+        movies-tv)    ARG=tv ;;
+        movies-anime) ARG=anime ;;
+        *)            ARG=movies ;;
+    esac
+fi
+
+case "$ARG" in
+    movies) JOB=movies;       COLL="Movies";   NOUN="movie";     LABEL="Saturday Watch";  WHEN="Saturday evening"; SEENF="movie-seen.tsv" ;;
+    tv)     JOB=movies-tv;    COLL="TV Shows"; NOUN="TV series"; LABEL="Midweek Series"; WHEN="week ahead";      SEENF="tv-seen.tsv" ;;
+    anime)  JOB=movies-anime; COLL="Anime";    NOUN="anime";     LABEL="Midweek Anime";  WHEN="week ahead";      SEENF="anime-seen.tsv" ;;
+    *)      echo "unknown collection '$ARG' (movies|tv|anime)" >&2; exit 1 ;;
+esac
 source "$(dirname "$0")/../lib/common.sh"
 
-MOVIES_DIR="$PKM/50 Collections/Movies"
-[ -d "$MOVIES_DIR" ] || { log "no movies dir"; exit 0; }
+MOVIES_DIR="$PKM/50 Collections/$COLL"
+[ -d "$MOVIES_DIR" ] || { log "no $COLL dir"; exit 0; }
 
-SEEN="$AGENT_STATE/movie-seen.tsv"   # DATE<tab>TITLE
-touch "$SEEN"
+SEEN="$AGENT_STATE/$SEENF"   # DATE<tab>TITLE — per-collection, so a film pick doesn't
+touch "$SEEN"                # suppress a same-named series and vice versa
 
 TOWATCH=$(grep -l '^status: to-watch' "$MOVIES_DIR"/*.md 2>/dev/null)
 [ -z "$TOWATCH" ] && { log "no to-watch entries"; exit 0; }
@@ -35,7 +59,7 @@ done
 
 LIKED_GENRES=$(for f in "$MOVIES_DIR"/*.md; do grep -q '^status: watched' "$f" 2>/dev/null && grep -m1 '^genres:' "$f"; done | sed -E 's/^genres:\s*//' | tr -d '[]"' | tr ',' '\n' | sed 's/^\s*//;s/\s*$//' | sort | uniq -c | sort -rn | head -8 | awk '{$1="";print}')
 
-PROMPT="From my movie to-watch catalog below, pick ONE genuine hidden gem for a Saturday evening watch — not the most obvious/popular pick, something a bit underrated relative to its quality. My most-watched genres historically (taste signal, not a hard filter): $LIKED_GENRES.
+PROMPT="From my $NOUN to-watch catalog below, pick ONE genuine hidden gem for the $WHEN — not the most obvious/popular pick, something a bit underrated relative to its quality. My most-watched genres historically (taste signal, not a hard filter): $LIKED_GENRES.
 
 CATALOG:
 $CATALOG
@@ -49,18 +73,23 @@ Output EXACTLY this format, no preamble, no closing remarks:
 - **Synopsis:** one short sentence, no spoilers.
 - **Where to watch:** platform(s) found, or 'not found on major Indian OTT platforms — check JustWatch' if unclear. Note subtitle availability if known. Add: (verify before pressing play — availability changes)."
 
-log "picking weekly movie from $(printf '%s' "$CATALOG" | grep -c TITLE) to-watch candidates..."
+log "picking weekly $NOUN from $(printf '%s' "$CATALOG" | grep -c TITLE) to-watch candidates..."
 BRIEF=$(run_agy "$PROMPT") || { log "claude failed"; exit 1; }
 
-PICK=$(printf '%s' "$BRIEF" | grep -oE '\*\*[^(]+\([0-9]{4}\)\*\*' | head -1 | sed -E 's/\*\*//g;s/\s*\([0-9]{4}\)\s*$//')
+# The year is a RANGE for series -- "(2014-2017)", en-dash, sometimes open-ended "(2019- )".
+# A single-year-only regex silently matched nothing on TV, so no pick was ever recorded and
+# the 60-day repeat suppression was dead for that collection. Character class covers the
+# en-dash/em-dash the model emits.
+YEARPAT='\([0-9]{4}([–—-] *[0-9]{0,4})?\)'
+PICK=$(printf '%s' "$BRIEF" | grep -oE "\*\*[^(]+$YEARPAT\*\*" | head -1 | sed -E "s/\*\*//g;s/ *$YEARPAT *\$//")
 today=$(date -u +%F)
 [ -n "$PICK" ] && printf '%s\t%s\n' "$today" "$PICK" >> "$SEEN"
 cutoff180=$(date -u -d '180 days ago' +%F 2>/dev/null || date -u -v-180d +%F)
 awk -F'\t' -v c="$cutoff180" '$1>=c' "$SEEN" > "$SEEN.tmp" && mv "$SEEN.tmp" "$SEEN"
 
-write_pkm "00 Capture/Daily/Agents/movies.md" "$BRIEF"
+write_pkm "00 Capture/Daily/Agents/$JOB.md" "$BRIEF"
 
 HTML=$(printf '%s' "$BRIEF" | python3 "$AGENT_HOME/lib/render_email.py" \
-        "Saturday Watch" "$(date -u '+%A, %d %B %Y')")
-send_mail "Saturday Watch — $(date -u '+%a %d %b')" "$HTML" html
+        "$LABEL" "$(date -u '+%A, %d %B %Y')")
+send_mail "$LABEL — $(date -u '+%a %d %b')" "$HTML" html
 log "done"
