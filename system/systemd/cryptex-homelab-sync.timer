@@ -1,0 +1,7 @@
+[Unit]
+Description=Weekly homelab public-repo sync PR
+[Timer]
+OnCalendar=Sun *-*-* 05:20:00
+Persistent=true
+[Install]
+WantedBy=timers.target

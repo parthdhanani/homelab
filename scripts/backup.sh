@@ -3,6 +3,11 @@
 # Run on VPS: ./scripts/backup.sh
 
 set -euo pipefail
+# Serialize: overlapping runs share TIMESTAMP (minute precision) and interleave writes
+# into the same tar (observed 2026-07-13 — snapshot captured a corrupt hybrid copy).
+exec 8>/var/lock/cryptex-backup.lock
+flock -n 8 || { echo "another backup.sh run holds the lock — exiting"; exit 0; }
+
 
 COMPOSE_DIR="/opt/cryptex"
 BACKUP_DIR="/opt/cryptex/backups"
@@ -56,8 +61,10 @@ if ! head -100 "${BACKUP_PATH}/postgres_all.sql" | grep -qE "^-- PostgreSQL|^\\\
     exit 1
 fi
 # Confirm all expected databases appear in dump (error if missing — partial backup is unusable)
+# List derived live from postgres (a hardcoded list is what let new DBs silently skip validation)
+_EXPECTED_DBS=$(docker exec cryptex-postgres psql -U "${POSTGRES_USER}" -lqt | cut -d'|' -f1 | tr -d ' ' | grep -vE '^(template[01]|postgres)$|^$')
 _MISSING_DBS=()
-for _db in moodle n8n forgejo miniflux traxlrs shlink; do
+for _db in ${_EXPECTED_DBS}; do
     grep -q "\\\\connect ${_db}" "${BACKUP_PATH}/postgres_all.sql" \
         || _MISSING_DBS+=("$_db")
 done
@@ -108,6 +115,30 @@ if [ -d /opt/cryptex/data/vaultwarden ]; then
             && cp -r "/opt/cryptex/data/vaultwarden/${_vw}" "${BACKUP_PATH}/vaultwarden/"
     done
     echo "  vaultwarden/ (db + rsa_key + attachments + sends)"
+fi
+
+# PocketID (SQLite via .backup for WAL consistency, same pattern as vaultwarden)
+echo "Backing up PocketID..."
+if [ -f /opt/cryptex/data/pocketid/pocket-id.db ]; then
+    mkdir -p "${BACKUP_PATH}/pocketid"
+    sqlite3 /opt/cryptex/data/pocketid/pocket-id.db ".backup '${BACKUP_PATH}/pocketid/pocket-id.db'"
+    [ -d /opt/cryptex/data/pocketid/uploads ] \
+        && cp -r /opt/cryptex/data/pocketid/uploads "${BACKUP_PATH}/pocketid/"
+    echo "  pocketid/ (db + uploads)"
+fi
+
+# Ignis app-state (browser-Obsidian config/workspace; the PKM vault itself is pkm.tar.gz)
+echo "Backing up Ignis app-state..."
+if [ -d /opt/cryptex/data/ignis ]; then
+    tar -czf "${BACKUP_PATH}/ignis-appstate.tar.gz" -C /opt/cryptex/data ignis
+    echo "  ignis-appstate.tar.gz"
+fi
+
+# Kinolist flat-JSON stores (kinolist-backup.timer copies them here nightly at 02:45)
+echo "Backing up kinolist..."
+if [ -d /opt/cryptex/data/kinolist-backup ]; then
+    cp -r /opt/cryptex/data/kinolist-backup "${BACKUP_PATH}/kinolist"
+    echo "  kinolist/ (profiles + user_data)"
 fi
 
 # n8n encryption keys (data is in PostgreSQL)
@@ -192,9 +223,16 @@ fi
 # Postgres dump / .env / stack-config — warn loudly and continue.
 echo "Backing up Uptime Kuma..."
 if [ -d /opt/cryptex/data/uptime-kuma ]; then
-    tar -czf "${BACKUP_PATH}/uptime-kuma.tar.gz" -C /opt/cryptex/data uptime-kuma \
+    # Excludes added 2026-07-25 after the nightly backup DOUBLED (354MB -> 675MB):
+    # three stale kuma.db.bak-* files (2.9GB) from July maintenance were being tarred
+    # and re-uploaded to B2 every night, which is the likely cause of the B2 Class B
+    # transaction cap being exhausted. A manual rollback copy is local scratch — the
+    # backup already IS the backup, so copying it into itself is pure waste.
+    # error.log is derived noise, not state (89MB of one repeated EPIPE trace).
+    tar --exclude='*.bak-*' --exclude='uptime-kuma/error.log' \
+        -czf "${BACKUP_PATH}/uptime-kuma.tar.gz" -C /opt/cryptex/data uptime-kuma \
         || { rc=$?; [ "$rc" -gt 1 ] && echo "  WARN: uptime-kuma tar exited $rc (non-fatal, continuing)"; true; }
-    echo "  uptime-kuma.tar.gz"
+    echo "  uptime-kuma.tar.gz ($(du -h "${BACKUP_PATH}/uptime-kuma.tar.gz" 2>/dev/null | cut -f1))"
 fi
 
 # ActualBudget (budget database)
@@ -209,22 +247,58 @@ fi
 cp "${COMPOSE_DIR}/.env" "${BACKUP_PATH}/dot-env"
 echo "  dot-env"
 
+# Personal tooling layer (~/.claude, shell config, herdr) — added 2026-07-25.
+# DR gap: everything above rebuilds Docker/cryptex/OB1, but a from-scratch restore
+# left zero trace of the Claude Code setup, memory files, hooks, skills, or shell
+# config. That layer is hand-built over months and is not reconstructible from any
+# repo. Size discipline matters here — ~/.claude is 1.1G raw, ~99% of which is
+# regenerable transcript/cache noise, so this excludes by default and keeps only
+# what cannot be rebuilt.
+echo "Backing up home tooling layer..."
+HOME_DIR="${BACKUP_HOME_DIR:-/home/ubuntu}"
+if [ -d "$HOME_DIR/.claude" ]; then
+    tar --ignore-failed-read --warning=no-file-ignored \
+        --exclude='*.jsonl'                       `# session transcripts, 333M of the 338M in projects/ — memory/*.md kept` \
+        --exclude='.claude/jobs'                  `# 225M of per-job scratch` \
+        --exclude='.claude/backups'               `# 195M, self-referential` \
+        --exclude='.claude/skill-vault'           `# 93M, re-cloneable from source` \
+        --exclude='.claude/skill-library-custom-backup' \
+        --exclude='.claude/secrets/*.sql'         `# 13M one-off OB1 dump` \
+        --exclude='.claude/secrets/*.tsv' \
+        --exclude='.claude/cache' \
+        --exclude='.claude/paste-cache' \
+        --exclude='.claude/shell-snapshots' \
+        --exclude='.claude/file-history' \
+        --exclude='.claude/session-env' \
+        --exclude='.claude/logs' \
+        --exclude='.claude/_repos' \
+        --exclude='.claude/plugins' \
+        --exclude='.claude/.git'                  `# 4690 objects — repo lives on GitHub (claude-dotfiles)` \
+        --exclude='**/node_modules' \
+        -czf "${BACKUP_PATH}/home-tooling.tar.gz" \
+        -C "$HOME_DIR" \
+        .claude .claude.json .bashrc .profile .gitconfig .config/herdr \
+        2>/dev/null || true
+    # Loud, because a silent 0-byte here is exactly how DR rots unnoticed.
+    if tar -tzf "${BACKUP_PATH}/home-tooling.tar.gz" >/dev/null 2>&1; then
+        echo "  home-tooling.tar.gz ($(du -h "${BACKUP_PATH}/home-tooling.tar.gz" | cut -f1)) — .claude(cfg+memory+skills+hooks), .bashrc, herdr"
+    else
+        echo "  WARNING: home-tooling.tar.gz failed integrity check"
+        rm -f "${BACKUP_PATH}/home-tooling.tar.gz"
+    fi
+fi
+
 # Sync live host configs into /opt/cryptex/system BEFORE the stack-config tar,
 # so restore.sh always gets current crontab/units/nginx/iptables (drift here is what rotted DR until 2026-06-10)
 echo "Syncing host configs into system/..."
 crontab -l > /opt/cryptex/system/cron/root.crontab 2>/dev/null || true
+crontab -l -u ubuntu > /opt/cryptex/system/cron/ubuntu.crontab 2>/dev/null || true
 cp /opt/cryptex/system/cron/root.crontab /opt/cryptex/system/crontab-root 2>/dev/null || true
 # Glob over all cryptex-owned unit prefixes rather than a hardcoded list — a stale
 # list is what silently dropped claude-agent@/crg-* from DR. Non-matching globs no-op.
-for f in /etc/systemd/system/sb-tool.service \
-         /etc/systemd/system/cryptex-*.service \
-         /etc/systemd/system/*-watcher.service \
-         /etc/systemd/system/claude-agent@.service \
-         /etc/systemd/system/crg-*.service \
-         /etc/systemd/system/iptables-save.service; do
-    cp "$f" /opt/cryptex/system/systemd/ 2>/dev/null || true
-done
+cp /etc/systemd/system/*.service /opt/cryptex/system/systemd/ 2>/dev/null || true
 cp /etc/systemd/system/*.timer /opt/cryptex/system/systemd/ 2>/dev/null || true
+systemctl list-unit-files --state=enabled --no-legend 2>/dev/null | awk '{print $1}' > /opt/cryptex/system/systemd/enabled.list || true
 cp /etc/nginx/sites-enabled/*.conf /opt/cryptex/system/nginx/sites-enabled/ 2>/dev/null || true
 cp /etc/iptables/rules.v4 /opt/cryptex/system/iptables/rules.v4 2>/dev/null || true
 
@@ -246,7 +320,8 @@ echo "  stack-config.tar.gz (compose, configs, scripts, dockerfiles)"
 
 # Compress
 echo "Compressing..."
-tar -czf "${BACKUP_DIR}/cryptex-${TIMESTAMP}.tar.gz" -C "$BACKUP_DIR" "$TIMESTAMP"
+tar -czf "${BACKUP_DIR}/.cryptex-${TIMESTAMP}.tar.gz.tmp" -C "$BACKUP_DIR" "$TIMESTAMP" \
+    && mv "${BACKUP_DIR}/.cryptex-${TIMESTAMP}.tar.gz.tmp" "${BACKUP_DIR}/cryptex-${TIMESTAMP}.tar.gz"
 rm -rf "$BACKUP_PATH"
 
 FINAL="${BACKUP_DIR}/cryptex-${TIMESTAMP}.tar.gz"
@@ -272,7 +347,14 @@ ls -t "${BACKUP_DIR}"/cryptex-*.tar.gz 2>/dev/null | tail -n +8 | xargs rm -f 2>
 
 echo "Creating Kopia snapshot..."
 KOPIA_STATUS="skipped"
-if docker exec cryptex-kopia kopia repository status >/dev/null 2>&1; then
+# `repository status` failing is ambiguous: it means EITHER "never configured" (fine,
+# local-only install) OR "configured but unreachable" — B2 cap exceeded, bad creds,
+# network. Those must not report identically. On 2026-07-25 the B2 Class B cap was
+# exhausted and this printed "repository not initialized — run deploy.sh", which reads
+# as benign, while offsite DR had actually been down since morning. Same failure shape
+# as the week-long silent break this alert was added for: the status line looked fine.
+# A kopia config on disk means it WAS configured, so a failure now is a real fault.
+if KOPIA_ERR=$(docker exec cryptex-kopia kopia repository status 2>&1); then
     if docker exec cryptex-kopia kopia snapshot create /backups 2>/dev/null; then
         echo "  Kopia snapshot: /backups"
         KOPIA_STATUS="success"
@@ -283,6 +365,10 @@ if docker exec cryptex-kopia kopia repository status >/dev/null 2>&1; then
     # Show latest snapshot summary
     docker exec cryptex-kopia kopia snapshot list /backups --max-results=1 2>/dev/null \
         | grep -v "^$" | tail -1 || true
+elif [ -n "$(ls -A /opt/cryptex/data/kopia/config 2>/dev/null)" ]; then
+    KOPIA_STATUS="failed"
+    echo "  ERROR: Kopia repo configured but UNREACHABLE — offsite DR is down"
+    echo "  ${KOPIA_ERR%%$'\n'*}"
 else
     echo "  Kopia skipped (repository not initialized — run deploy.sh to configure)"
 fi

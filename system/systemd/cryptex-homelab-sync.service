@@ -1,0 +1,10 @@
+[Unit]
+Description=Publish new cryptex commits to the public homelab repo as a PR
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+User=ubuntu
+Environment=HOME=/home/ubuntu
+ExecStart=/opt/cryptex/scripts/cron-notify.sh /opt/cryptex/scripts/homelab-sync.sh
+TimeoutStartSec=600

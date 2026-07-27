@@ -1,0 +1,7 @@
+[Unit]
+Description=Monthly full restore drill (B2 snapshot -> throwaway postgres -> row-count assertions)
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/cryptex/scripts/restore-drill.sh

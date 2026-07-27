@@ -1,0 +1,9 @@
+[Unit]
+Description=Restore drill monthly (6th, 04:45 UTC — day after spot-check)
+
+[Timer]
+OnCalendar=*-*-06 04:45:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

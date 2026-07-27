@@ -101,3 +101,26 @@ apps/ignis/
 # a future `git add -A` must not be able to publish the key, and this repo has a public
 # derivative (github-public -> homelab).
 duel/state/
+
+# Distro-owned systemd units. backup.sh copies /etc/systemd/system/*.{service,timer}
+# wholesale, which sweeps in units apt/snap install and rewrite on every upgrade.
+# Only cryptex-owned units belong in this repo — a package bump must not dirty it,
+# and restoring a distro's own unit file onto a fresh box is at best a no-op.
+system/systemd/sshd.service
+system/systemd/sudo.service
+system/systemd/syslog.service
+system/systemd/rpcbind.service
+system/systemd/iscsi.service
+system/systemd/multipath-tools.service
+system/systemd/vmtoolsd.service
+system/systemd/systemd-resolved.service
+system/systemd/dbus-org.freedesktop.timesync1.service
+system/systemd/fwupd.service
+system/systemd/fwupd-refresh.service
+system/systemd/snap.*.service
+
+# v2-rebuild terraform archive. Untracked deliberately in 49735be (2026-05-27):
+# terraform.tfvars carries the OCI tenancy/user OCIDs and API-key fingerprint, and
+# tfstate carries private IPs. Neither is in history — keep it that way. This repo
+# has a public derivative (github-public -> homelab).
+legacy/
