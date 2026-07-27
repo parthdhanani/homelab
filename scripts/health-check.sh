@@ -15,9 +15,14 @@ fi
 DEPLOY_PROFILE="${DEPLOY_PROFILE:-personal}"
 DEPLOY_SERVICES="${DEPLOY_SERVICES:-all}"
 
-# Helper: skip check if service not in custom profile
+# Services under compose profiles: ["disabled"] are OFF ON PURPOSE — never probe them
+# ("not running" != "broken"; see ~/.claude/autonomy.md). Derived once per run.
+_DISABLED_SVCS=$( { docker compose -f /opt/cryptex/docker-compose.yml --profile disabled config --services 2>/dev/null | sort; docker compose -f /opt/cryptex/docker-compose.yml config --services 2>/dev/null | sort; } | sort | uniq -u )
+
+# Helper: skip check if service not in custom profile, or intentionally disabled
 svc_enabled() {
     local svc="$1"
+    [[ " $(echo $_DISABLED_SVCS) " == *" $svc "* ]] && return 1
     [ "$DEPLOY_PROFILE" = "personal" ] && return 0
     [[ " $DEPLOY_SERVICES " == *" $svc "* ]] && return 0
     return 1
