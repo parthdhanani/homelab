@@ -1,0 +1,7 @@
+[Unit]
+Description=Copy Kinolist profiles.json/user_data.json into Kopia's backed-up data path
+
+[Service]
+Type=oneshot
+User=ubuntu
+ExecStart=/home/ubuntu/AI_Space/complete/stream-portal/backup_data.sh

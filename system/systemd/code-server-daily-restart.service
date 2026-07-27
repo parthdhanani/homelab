@@ -1,0 +1,7 @@
+[Unit]
+Description=Daily code-server restart - reaps leaked Claude Code bg-spare pool (see docs/plans/2026-07-13-ram-bg-spare-handover.md)
+# Deliberately does NOT touch cryptex-terminal.service (herdr) - KillMode=process there is intentional.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl restart code-server@ubuntu.service

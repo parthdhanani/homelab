@@ -7,7 +7,7 @@ Type=simple
 User=ubuntu
 Environment=PATH=/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin
 ExecStart=/home/ubuntu/.local/bin/crg-daemon start --foreground
-Restart=on-failure
+Restart=always
 RestartSec=5
 
 [Install]

@@ -1,0 +1,14 @@
+[Unit]
+Description=Kinolist (stream-portal) Vite dev server - dev.psidex.com
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/AI_Space/complete/stream-portal
+ExecStart=/usr/bin/npx vite --port 5173 --host 172.18.0.1
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

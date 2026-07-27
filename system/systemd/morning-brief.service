@@ -1,0 +1,9 @@
+[Unit]
+Description=Cross-agent morning brief from OB1 (last 24h digest)
+After=docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+Environment=HOME=/home/ubuntu
+ExecStart=/home/ubuntu/.claude/scripts/morning-brief.sh

@@ -1,0 +1,8 @@
+[Unit]
+Description=Daily report-only git-fleet sweep (emails if repos have unsaved work)
+
+[Service]
+Type=oneshot
+User=ubuntu
+Environment=HOME=/home/ubuntu
+ExecStart=/home/ubuntu/.claude/scripts/fleet-report.sh

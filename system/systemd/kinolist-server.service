@@ -1,0 +1,14 @@
+[Unit]
+Description=Kinolist (stream-portal) backend - static file server + API proxy
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/AI_Space/complete/stream-portal
+ExecStart=/usr/bin/python3 -u server.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,8 @@
+[Unit]
+Description=Weekly Claude-layer self-audit (emails findings)
+
+[Service]
+Type=oneshot
+User=ubuntu
+Environment=HOME=/home/ubuntu
+ExecStart=/home/ubuntu/.claude/scripts/self-audit.sh

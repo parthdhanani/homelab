@@ -1,0 +1,9 @@
+[Unit]
+Description=Claude memory machine — sync to OB1 + demote aged index entries
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Environment=HOME=/home/ubuntu
+ExecStart=/bin/bash /home/ubuntu/.claude/scripts/memory-sync.sh

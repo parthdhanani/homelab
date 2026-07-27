@@ -1,0 +1,8 @@
+[Unit]
+Description=Sync skill-library/custom to private backup repo (claude-dotfiles)
+After=network.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+ExecStart=/bin/bash /home/ubuntu/.claude/scripts/skill-library-backup-sync.sh

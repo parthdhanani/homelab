@@ -1,0 +1,13 @@
+[Unit]
+Description=Uptime Kuma webhook bridge - diagnose-only incident responder (Stage 1)
+After=network.target docker.service
+
+[Service]
+User=ubuntu
+Environment=HOME=/home/ubuntu
+ExecStart=/usr/bin/python3 /home/ubuntu/.claude/scripts/incident-bridge.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

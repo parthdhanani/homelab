@@ -1,0 +1,14 @@
+[Unit]
+Description=dev.psidex.com vite dev server (stream-portal)
+After=network.target
+
+[Service]
+User=ubuntu
+Environment=HOME=/home/ubuntu
+WorkingDirectory=/home/ubuntu/AI_Space/complete/stream-portal
+ExecStart=/usr/bin/npm run dev -- --port 5173 --host 172.18.0.1
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

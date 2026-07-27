@@ -1,0 +1,9 @@
+[Unit]
+Description=Nightly skill-library/custom backup sync
+
+[Timer]
+OnCalendar=*-*-* 03:44:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
