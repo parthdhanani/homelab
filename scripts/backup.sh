@@ -277,7 +277,7 @@ if [ -d "$HOME_DIR/.claude" ]; then
         --exclude='**/node_modules' \
         -czf "${BACKUP_PATH}/home-tooling.tar.gz" \
         -C "$HOME_DIR" \
-        .claude .claude.json .bashrc .profile .gitconfig .config/herdr \
+        .claude .claude.json .bashrc .profile .gitconfig .config/herdr .git-hooks \
         2>/dev/null || true
     # Loud, because a silent 0-byte here is exactly how DR rots unnoticed.
     if tar -tzf "${BACKUP_PATH}/home-tooling.tar.gz" >/dev/null 2>&1; then
