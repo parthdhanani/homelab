@@ -83,6 +83,20 @@ normalize() {
         -e 's/<[^>]*>/ /g' | tr -s ' \t\r\n' ' ' | sed 's/^ *//;s/ *$//'
 }
 
+
+# strip_narration — agy --print always emits step-by-step narration before the answer.
+# If the output has a markdown heading, everything before the first one is narration → drop it.
+# If it has no heading (short/plain answers), fall back to the old line-level filter so we
+# never eat an entire legitimate answer (WP 4.4 STOP-IF case).
+strip_narration() {
+    local all; all=$(cat)
+    if printf '%s\n' "$all" | grep -q '^#'; then
+        printf '%s\n' "$all" | awk '/^#/{found=1} found'
+    else
+        printf '%s\n' "$all" | grep -vE "^I (am|will|'m) "
+    fi
+}
+
 # run_claude "prompt"  — headless, web-research-only, text out. Timeout-guarded.
 # Restricted to WebSearch/WebFetch: these jobs only need to research and produce text — the
 # script itself does every file write/send. No Bash/Edit/Write tool access for the model, since
@@ -113,7 +127,7 @@ run_claude() {
             # lines heuristically since our prompts never legitimately start a line that way.
             # Upgrade trigger: agy ships a --print-quiet flag, or this filter starts eating real content.
             out=$(timeout 600 "$agy_bin" "Gemini 3.5 Flash (Low)" "$prompt" 2>>"$AGENT_LOG/claude.err" \
-                  | grep -vE "^I (am|will|'m) ")
+                  | strip_narration)
             rc=$?
             # agy can print "Error: ..." to stdout on its own internal failures with exit 0 —
             # same silent-failure mode run_agy() already guards against.
@@ -137,7 +151,7 @@ run_agy() {
     guarded="$HOOK_NOISE_GUARD$prompt"
     if [ -x "$agy_bin" ]; then
         out=$(timeout 600 "$agy_bin" "Gemini 3.5 Flash (Low)" "$guarded" 2>>"$AGENT_LOG/claude.err" \
-              | grep -vE "^I (am|will|'m) ")
+              | strip_narration)
         rc=$?
         # agy can print "Error: ..." to stdout on its own internal failures (e.g. timeout) with
         # exit 0 — a clean rc check alone would treat that error text as real content.

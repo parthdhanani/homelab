@@ -39,13 +39,13 @@ count=0
 while IFS= read -r line; do
     [ -z "$line" ] && continue
     msgid=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin).get('message_id',''))" 2>/dev/null)
-    # no reliable Message-ID (rare, some senders omit it) — fall back to the raw line itself
-    # as the dedup key so we never silently drop a signal, at worst we re-check identical text.
-    key="${msgid:-$line}"
-    grep -qF "$key" "$SEEN" 2>/dev/null && continue   # already logged in a prior run
-
     date_hdr=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin).get('date',''))" 2>/dev/null)
     subject=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin).get('subject',''))" 2>/dev/null)
+    # no reliable Message-ID (rare, some senders omit it) — fall back to stable parsed fields,
+    # NOT the raw JSON line (serialization order / added metadata would silently break dedup).
+    key="${msgid:-${subject}|${date_hdr}}"
+    grep -qF "$key" "$SEEN" 2>/dev/null && continue   # already logged in a prior run
+
     kind=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin).get('kind',''))" 2>/dev/null)
     company=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin).get('company_guess',''))" 2>/dev/null)
 

@@ -25,3 +25,26 @@ Parth Dhanani — e-learning developer & self-hosted infrastructure engineer.
 ## Hard constraints
 - Location: Mysore, India (IST). No relocation stated.
 - Visa sponsorship needs: not stated — flag and ask before assuming either way for non-India roles.
+
+### Work-authorization filter (added 2026-07-25 — hard exclusion, not a preference)
+I am **based in India with no US/UK/EU work authorization and no sponsorship**. A role I
+cannot legally hold is worse than no result: it costs a send and returns nothing. Before
+including ANY posting, check its authorization terms and **exclude outright** if it says
+any of:
+- "W2" / "W2 contract" / "1099" / "must be authorized to work in the US"
+- "US-based candidates only" / "must reside in the US" / a US-state-specific location
+- "USA, Canada only" / "EU work permit required" / "no sponsorship available"
+- on-site, hybrid, or "X days in office" anywhere outside India
+
+**Prefer and rank first** postings that explicitly say India-eligible — e.g. "Open to
+India-Based Candidates Only", "Costa Rica or India", "global/anywhere remote", or an
+Indian company hiring domestically. These convert; US W2 listings never will.
+
+If the posting genuinely does not state authorization terms, keep it but append
+`⚠️ auth unverified` to its entry so I know to check before spending time.
+
+**Why this exists:** the 2026-07-25 re-verification of the 10-row application tracker
+found the binding filter was authorization, not fit or seniority. Several well-matched
+US roles (SweetRush W2 contracts, a Hurix $67–73K ID role) were structurally impossible
+from India. The two that survived — Infopro "India-Based Candidates Only" and SweetRush
+"Costa Rica or India" — were the only real leads in the set.

@@ -11,17 +11,29 @@ FAILED=$(systemctl --failed --no-legend 2>/dev/null | awk '{print $1}' | tr '\n'
 CONTAINERS=$(docker ps -q 2>/dev/null | wc -l)
 UNHEALTHY=$(docker ps --filter health=unhealthy --format '{{.Names}}' 2>/dev/null | tr '\n' ' '); UNHEALTHY="${UNHEALTHY:-none}"
 JOBHUNT=$(python3 "$AGENT_HOME/lib/jobstats.py" --days 7 2>/dev/null || echo "unavailable")
+# Drafted-but-unposted LinkedIn queue. Same failure mode as jobhunt: assets written,
+# never shipped (4 posts sat unposted for 18 days). Reported, not auto-drafted —
+# generating post 5 while 1-3 wait is the anti-pattern, not the fix.
+LINKEDIN=$(python3 "$AGENT_HOME/lib/linkedin_queue.py" 2>/dev/null || echo "linkedin: unavailable")
+# Memory index consistency. Flag-only — deletes and rewrites nothing.
+MEMLINT=$(python3 /home/ubuntu/.claude/scripts/memory-lint.py --quiet 2>/dev/null || echo "unavailable")
 
 FACTS="OB1 $OB1
 Disk: $DISK
 Mem: $MEM
 Failed systemd units: $FAILED
 Containers running: $CONTAINERS | unhealthy: $UNHEALTHY
-Job search this week: $JOBHUNT"
+Job search this week: $JOBHUNT
+LinkedIn queue: $LINKEDIN
+Memory index: $MEMLINT"
 
 PROMPT="Here is the raw weekly state of my self-hosted system. Write me a short 'state of your world' digest: lead with anything that needs my attention (failures, disk pressure), then a one-line all-clear for what's healthy. Be honest and brief — no cheerleading. If everything's fine, say so in 2 lines.
 
 Separately, always report the 'Job search this week' line plainly and without softening — it's drafted roles vs. Gmail-confirmed real applications sent. If applied is 0 or far below drafted, say that bluntly; do not spin it positively.
+
+Apply the same rule to the 'LinkedIn queue' line: it is drafted posts vs. posted ones. If posts are sitting ready and unposted, say the number plainly in one line. Do not offer to write more posts — more drafts is the problem, not the fix. Posts marked blocked on a dependency are not a nag; mention them only if nothing else is ready.
+
+The 'Memory index' line is housekeeping, not an alert. If it says clean, omit it entirely — do not spend a line telling me nothing is wrong. Mention it only when it reports issues.
 
 $FACTS"
 

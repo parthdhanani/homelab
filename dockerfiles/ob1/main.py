@@ -26,6 +26,8 @@ from mcp.server.fastmcp.server import TransportSecuritySettings
 from psycopg2 import pool as pgpool
 from pgvector.psycopg2 import register_vector
 
+from redact import redact_secrets
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("ob1")
 
@@ -151,6 +153,12 @@ def init_db():
 def _remember(content: str, source: str = "manual", tags: list[str] | None = None, session_id: str = "") -> str:
     if not content.strip():
         return "Empty content — skipped."
+
+    # Strip credentials BEFORE chunking and embedding — a secret spanning a chunk
+    # boundary would survive per-chunk filtering, and the embedding is computed per
+    # chunk. Doing it here covers every writer (the six /api/remember callers, the MCP
+    # tool, bulk_import) in one place. See redact.py.
+    content = redact_secrets(content)
 
     pieces = chunk_text(content)
     if len(pieces) == 1:

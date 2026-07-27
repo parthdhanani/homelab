@@ -1,0 +1,18 @@
+[Unit]
+Description=Job-Hunt Tracker (Flask)
+After=network.target docker.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/AI_Space/complete/autonomous_lab/jobhunt-tracker
+Environment=PORT=8770
+# binds 0.0.0.0:8770 -> reachable at 172.18.0.1:8770 for the CF tunnel bridge.
+# NOT publicly reachable: port 8770 is not opened in iptables / Oracle security list.
+# Real access gate is Cloudflare Access (lock to your email) — see DEPLOY_CLOUDFLARE.md.
+ExecStart=/usr/bin/python3 /home/ubuntu/AI_Space/complete/autonomous_lab/jobhunt-tracker/app.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
