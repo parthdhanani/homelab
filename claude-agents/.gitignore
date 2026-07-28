@@ -2,3 +2,7 @@
 state/
 logs/
 *.lock
+
+# Personal job-search profile: no credentials, so gitleaks will not flag it,
+# but it is personal content and /opt/cryptex publishes to the PUBLIC homelab repo.
+config/jobhunt.md
