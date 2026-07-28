@@ -24,9 +24,39 @@ echo "CRYPTEX Disaster Recovery Restore"
 echo "────────────────────────────────"
 echo ""
 
+# ── Destructive-action gate (added 2026-07-28) ────────────────────────────
+# This script DROPS AND RECREATES every database and overwrites .env. That is
+# correct on a fresh VPS and catastrophic on a running one. It previously ran
+# straight through with no confirmation: on 2026-07-28 an intended "validate the
+# --dir path" invocation dropped 7 live databases before anyone could react.
+# They were recoverable only because the dump being tested was minutes old.
+#
+# CRYPTEX_RESTORE_YES=1 skips the prompt for genuine unattended DR.
+if [ -z "${CRYPTEX_RESTORE_YES:-}" ]; then
+    RUNNING=$(docker ps -q 2>/dev/null | wc -l)
+    echo "⚠️  DESTRUCTIVE: drops/recreates all databases and overwrites .env"
+    echo "    Containers currently running: ${RUNNING}"
+    if [ "$RUNNING" -gt 0 ]; then
+        echo "    This host is LIVE — restoring will destroy current data."
+    fi
+    echo ""
+    read -rp "Type RESTORE to proceed: " _confirm
+    [ "$_confirm" = "RESTORE" ] || { echo "Aborted."; exit 1; }
+    echo ""
+fi
+
 # ── Select backup file ──
 
-if [ -n "${1:-}" ]; then
+# --dir <path>: restore straight from an already-extracted dump directory.
+# Added 2026-07-28 with the kopia staging-mirror change: kopia now snapshots the
+# UNCOMPRESSED /backup-stage, so `kopia restore` already yields the extracted tree.
+# Without this the DR path would force a pointless re-tar/untar round trip.
+RESTORE_DIR=""
+if [ "${1:-}" = "--dir" ]; then
+    RESTORE_DIR="${2:?--dir requires a path}"
+    [ -d "$RESTORE_DIR" ] || { echo "ERROR: not a directory: $RESTORE_DIR"; exit 1; }
+    BACKUP_FILE=""
+elif [ -n "${1:-}" ]; then
     BACKUP_FILE="$1"
 else
     # List available local backups
@@ -35,9 +65,20 @@ else
         echo "ERROR: No local backups found in ${COMPOSE_DIR}/backups/"
         echo ""
         echo "To restore from B2 (Kopia):"
-        echo "  docker exec cryptex-kopia kopia snapshot list /backups"
-        echo "  docker exec cryptex-kopia kopia restore <snapshot-id> /backups/restored/"
-        echo "  Then extract and run: ./scripts/restore.sh /opt/cryptex/backups/cryptex-YYYYMMDD_HHMMSS.tar.gz"
+        echo "  docker exec cryptex-kopia kopia snapshot list --all"
+        echo "  docker exec cryptex-kopia kopia restore <root-object-id> /restored/"
+        echo ""
+        echo "  Since 2026-07-28 kopia snapshots /backup-stage — the UNCOMPRESSED dump dir."
+        echo "  Its restore output IS the extracted backup: pass the directory straight to"
+        echo "  this script, no tar extraction needed:"
+        echo "    ./scripts/restore.sh --dir /restored"
+        echo ""
+        echo "  Snapshots before 2026-07-28 are under source :/backups and contain the old"
+        echo "  cryptex-*.tar.gz tarballs — restore one, then:"
+        echo "    ./scripts/restore.sh /path/to/cryptex-YYYYMMDD_HHMMSS.tar.gz"
+        echo ""
+        echo "  NOTE: 'snapshot list' shows the ROOT OBJECT id; 'snapshot verify' needs the"
+        echo "  MANIFEST id from 'snapshot list --all --json' (.id). Different namespaces."
         exit 1
     fi
 
@@ -52,33 +93,49 @@ else
     BACKUP_FILE="${BACKUPS[$((sel-1))]}"
 fi
 
-if [ ! -f "$BACKUP_FILE" ]; then
-    echo "ERROR: Backup file not found: $BACKUP_FILE"
-    exit 1
+if [ -n "$RESTORE_DIR" ]; then
+    # --dir mode: the tree is already extracted (kopia restore of /backup-stage).
+    # Accept either the dump dir itself or a parent holding one timestamped subdir.
+    if [ -f "${RESTORE_DIR}/dot-env" ]; then
+        RESTORE_PATH="$RESTORE_DIR"
+    else
+        RESTORE_PATH=$(find "$RESTORE_DIR" -mindepth 1 -maxdepth 1 -type d | head -1)
+    fi
+    [ -n "$RESTORE_PATH" ] && [ -f "${RESTORE_PATH}/dot-env" ] || {
+        echo "ERROR: ${RESTORE_DIR} does not look like a cryptex dump (no dot-env found)"
+        exit 1
+    }
+    echo "Restoring from directory: $RESTORE_PATH ($(du -sh "$RESTORE_PATH" | cut -f1))"
+    echo ""
+else
+    if [ ! -f "$BACKUP_FILE" ]; then
+        echo "ERROR: Backup file not found: $BACKUP_FILE"
+        exit 1
+    fi
+
+    echo "Restoring from: $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
+    echo ""
+
+    # ── Validate backup integrity ──
+
+    echo "Validating backup integrity..."
+    if ! tar -tzf "$BACKUP_FILE" >/dev/null 2>&1; then
+        echo "ERROR: Backup tarball is corrupt"
+        exit 1
+    fi
+    echo "  Tarball: OK"
+
+    # ── Extract backup ──
+
+    RESTORE_TMP=$(mktemp -d)
+    trap 'rm -rf "$RESTORE_TMP"' EXIT
+
+    echo "Extracting..."
+    tar -xzf "$BACKUP_FILE" -C "$RESTORE_TMP"
+    # The backup contains a timestamped subdirectory
+    RESTORE_PATH=$(find "$RESTORE_TMP" -mindepth 1 -maxdepth 1 -type d | head -1)
+    echo "  Extracted to: $RESTORE_PATH"
 fi
-
-echo "Restoring from: $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
-echo ""
-
-# ── Validate backup integrity ──
-
-echo "Validating backup integrity..."
-if ! tar -tzf "$BACKUP_FILE" >/dev/null 2>&1; then
-    echo "ERROR: Backup tarball is corrupt"
-    exit 1
-fi
-echo "  Tarball: OK"
-
-# ── Extract backup ──
-
-RESTORE_TMP=$(mktemp -d)
-trap 'rm -rf "$RESTORE_TMP"' EXIT
-
-echo "Extracting..."
-tar -xzf "$BACKUP_FILE" -C "$RESTORE_TMP"
-# The backup contains a timestamped subdirectory
-RESTORE_PATH=$(find "$RESTORE_TMP" -mindepth 1 -maxdepth 1 -type d | head -1)
-echo "  Extracted to: $RESTORE_PATH"
 echo ""
 
 # ── Restore the full .env from the snapshot ──

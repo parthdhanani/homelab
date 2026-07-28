@@ -17,3 +17,6 @@
 # CRYPTEX-MANAGED-END
 * * * * * /opt/cryptex/scripts/memwatch.sh
 30 4 5 * * /opt/cryptex/scripts/restore-spot-check.sh >> /var/log/cryptex-restore-check.log 2>&1
+
+# Backup growth guard — catches runaway DB/tarball growth before it eats the B2 tier (added 2026-07-28)
+30 4 * * * /opt/cryptex/scripts/backup-growth-guard.sh >> /var/log/cryptex-growth-guard.log 2>&1

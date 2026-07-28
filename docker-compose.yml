@@ -577,6 +577,10 @@ services:
       - /opt/cryptex/data/kopia/repository:/app/repository
       - /opt/cryptex/data:/data:ro
       - /opt/cryptex/backups:/backups:ro
+      # Uncompressed mirror of the nightly dump — this is what kopia snapshots now.
+      # Snapshotting the gzipped tarballs in /backups defeated content-addressed dedup
+      # (~55 un-dedupable tarballs referenced across retained snapshots). See backup.sh.
+      - /opt/cryptex/backup-stage:/backup-stage:ro
     environment:
       KOPIA_CONFIG_PATH: /app/config/repository.config
       KOPIA_LOG_DIR: /app/config/logs

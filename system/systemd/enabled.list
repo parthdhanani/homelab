@@ -113,7 +113,6 @@ claude-memory-sync.timer
 code-server-daily-restart.timer
 crg-ob1-sync.timer
 cryptex-graphify-update.timer
-cryptex-homelab-sync.timer
 cryptex-pkm-sync.timer
 daily-digest.timer
 dpkg-db-backup.timer

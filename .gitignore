@@ -27,6 +27,11 @@ configs/pgbouncer/userlist.txt
 # ---- Stateful runtime data ----
 data/
 backups/
+# Uncompressed mirror of the nightly dump; this is what kopia snapshots.
+# Same class of data as backups/ — raw DB dumps, .env, vaultwarden keys.
+# NOTE: any new dir holding backup output must be added here AND to the
+# stack-config tar excludes in scripts/backup.sh, or it leaks/recurses.
+backup-stage/
 graphify-out/
 scripts/graphify-out/
 mcp/.venv/

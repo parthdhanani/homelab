@@ -13,6 +13,10 @@ COMPOSE_DIR="/opt/cryptex"
 BACKUP_DIR="/opt/cryptex/backups"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_PATH="${BACKUP_DIR}/${TIMESTAMP}"
+# Uncompressed mirror kopia snapshots instead of the gzipped tarballs — see the
+# "dedup staging mirror" block below for why. Deliberately OUTSIDE $BACKUP_DIR so
+# the "keep last 7 tarballs" cleanup and restore.sh's backup picker never see it.
+STAGE_DIR="/opt/cryptex/backup-stage"
 
 # shellcheck disable=SC1090
 source "${COMPOSE_DIR}/.env"
@@ -308,6 +312,10 @@ echo "Backing up stack config..."
 tar -czf "${BACKUP_PATH}/stack-config.tar.gz" \
     --exclude="cryptex/data" \
     --exclude="cryptex/backups" \
+    --exclude="cryptex/backup-stage" \
+    `# ^ without this the staging mirror gets tarred into stack-config.tar.gz, i.e.` \
+    `#   the backup swallows the previous backup. Observed 2026-07-28: run 2 of the` \
+    `#   day was 122MB vs run 1 at 61MB, all of it recursion.` \
     --exclude="cryptex/.git.local-backup-*" \
     --exclude="cryptex/graphify-out" \
     --exclude="cryptex/workspace" \
@@ -322,6 +330,29 @@ echo "  stack-config.tar.gz (compose, configs, scripts, dockerfiles)"
 echo "Compressing..."
 tar -czf "${BACKUP_DIR}/.cryptex-${TIMESTAMP}.tar.gz.tmp" -C "$BACKUP_DIR" "$TIMESTAMP" \
     && mv "${BACKUP_DIR}/.cryptex-${TIMESTAMP}.tar.gz.tmp" "${BACKUP_DIR}/cryptex-${TIMESTAMP}.tar.gz"
+
+# ── Dedup staging mirror (added 2026-07-28) ───────────────────────────────
+# Kopia is content-addressed, but gzip output changes wholesale on any input change,
+# so every nightly tarball was a fresh un-dedupable blob. With 7 daily + 4 weekly +
+# 2 monthly snapshots each capturing 7 tarballs, ~55 distinct tarballs were referenced
+# at once: every 1 MB of tarball growth cost ~55 MB in B2. That multiplier is how one
+# runaway DB (uptime-kuma, +190 MB/day) reached 74% of the 10 GB free tier before
+# anything noticed.
+#
+# Fix: mirror the RAW dump dir (pre-tar) to a stable path and point kopia there.
+# Unchanged files dedup to ~0 bytes and kopia applies its own compression. The tarball
+# above is still written exactly as before, so restore.sh and the documented DR path
+# are unaffected — this is purely additive.
+# debt: local disk cost ~= one uncompressed backup (~2.7GB); revisit if / gets tight.
+echo "Updating dedup staging mirror..."
+mkdir -p "$STAGE_DIR"
+if rsync -a --delete "${BACKUP_PATH}/" "${STAGE_DIR}/"; then
+    echo "  ${STAGE_DIR} ($(du -sh "$STAGE_DIR" 2>/dev/null | cut -f1) raw — dedupes against prior snapshots)"
+else
+    # Not fatal: kopia still has the previous mirror state plus every local tarball.
+    echo "  WARNING: staging mirror sync failed — kopia will snapshot the previous mirror state"
+fi
+
 rm -rf "$BACKUP_PATH"
 
 FINAL="${BACKUP_DIR}/cryptex-${TIMESTAMP}.tar.gz"
@@ -341,9 +372,16 @@ echo "Cleaning old backups (keeping 7)..."
 ls -t "${BACKUP_DIR}"/cryptex-*.tar.gz 2>/dev/null | tail -n +8 | xargs rm -f 2>/dev/null || true
 
 # ── Kopia snapshot (deduplication + compression + B2 offsite if configured) ──
-# Kopia snapshots the /backups directory (mounted read-only inside the kopia container).
+# Kopia snapshots /backup-stage — the UNCOMPRESSED mirror written above — not the
+# gzipped tarballs in /backups. Snapshotting tarballs defeated dedup entirely (see the
+# staging-mirror block). Both dirs are mounted read-only in the kopia container.
 # If kopia is connected to B2, the snapshot is stored there (encrypted + deduplicated).
 # If local filesystem, the snapshot is stored in /opt/cryptex/data/kopia/repository.
+#
+# Source-identity note: kopia retention prunes per source path AND hostname. Changing
+# the snapshot path starts a NEW source; the old root@<host>:/backups snapshots stop
+# receiving writes and therefore stop being pruned. They must be retired deliberately.
+KOPIA_SOURCE="/backup-stage"
 
 echo "Creating Kopia snapshot..."
 KOPIA_STATUS="skipped"
@@ -355,15 +393,15 @@ KOPIA_STATUS="skipped"
 # as the week-long silent break this alert was added for: the status line looked fine.
 # A kopia config on disk means it WAS configured, so a failure now is a real fault.
 if KOPIA_ERR=$(docker exec cryptex-kopia kopia repository status 2>&1); then
-    if docker exec cryptex-kopia kopia snapshot create /backups 2>/dev/null; then
-        echo "  Kopia snapshot: /backups"
+    if docker exec cryptex-kopia kopia snapshot create "$KOPIA_SOURCE" 2>/dev/null; then
+        echo "  Kopia snapshot: ${KOPIA_SOURCE}"
         KOPIA_STATUS="success"
     else
         echo "  WARNING: Kopia snapshot failed"
         KOPIA_STATUS="failed"
     fi
     # Show latest snapshot summary
-    docker exec cryptex-kopia kopia snapshot list /backups --max-results=1 2>/dev/null \
+    docker exec cryptex-kopia kopia snapshot list "$KOPIA_SOURCE" --max-results=1 2>/dev/null \
         | grep -v "^$" | tail -1 || true
 elif [ -n "$(ls -A /opt/cryptex/data/kopia/config 2>/dev/null)" ]; then
     KOPIA_STATUS="failed"
