@@ -23,7 +23,6 @@ containerd.service
 crg-daemon.service
 cron.service
 cryptex-terminal.service
-dev-psidex.service
 dmesg.service
 docker.service
 duel.service
