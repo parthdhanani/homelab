@@ -38,7 +38,6 @@ incident-bridge.service
 irqbalance.service
 jobhunt-tracker.service
 keyboard-setup.service
-kinolist-dev.service
 kinolist-server.service
 lvm2-monitor.service
 lxd-agent.service
@@ -114,6 +113,7 @@ code-server-daily-restart.timer
 crg-ob1-sync.timer
 cryptex-graphify-update.timer
 cryptex-pkm-sync.timer
+cryptex-status-alert.timer
 daily-digest.timer
 dpkg-db-backup.timer
 e2scrub_all.timer

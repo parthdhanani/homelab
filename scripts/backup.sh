@@ -247,6 +247,62 @@ if [ -d /opt/cryptex/data/actualbudget ]; then
     echo "  actualbudget.tar.gz"
 fi
 
+# Coverage gaps closed 2026-07-29 (audit): these five directories held real,
+# non-reconstructible state and were in NO backup target.
+# dockhand.db: git_credentials + oidc_config + registries + roles. SQLite .backup
+# for WAL consistency, same pattern as vaultwarden/pocketid.
+# host_metrics is time-series bloat (94M db, mostly metrics) — dropped from the
+# backup copy only; the live DB is untouched.
+echo "Backing up Dockhand..."
+if [ -f /opt/cryptex/data/dockhand/db/dockhand.db ]; then
+    mkdir -p "${BACKUP_PATH}/dockhand"
+    sqlite3 /opt/cryptex/data/dockhand/db/dockhand.db \
+        ".backup '${BACKUP_PATH}/dockhand/dockhand.db'"
+    sqlite3 "${BACKUP_PATH}/dockhand/dockhand.db" \
+        "DELETE FROM host_metrics; DELETE FROM container_events; VACUUM;" 2>/dev/null || true
+    for _dh in stacks git-repos; do
+        [ -d "/opt/cryptex/data/dockhand/${_dh}" ] \
+            && cp -r "/opt/cryptex/data/dockhand/${_dh}" "${BACKUP_PATH}/dockhand/"
+    done
+    echo "  dockhand/ ($(du -h "${BACKUP_PATH}/dockhand/dockhand.db" | cut -f1) after metrics prune)"
+fi
+
+# OpenList/alist config + DB (storage provider definitions — the thing you'd have
+# to re-add by hand). log/ and temp/ are derived noise.
+echo "Backing up OpenList/alist..."
+if [ -d /opt/cryptex/data/alist ]; then
+    tar --exclude='alist/log' --exclude='alist/temp' \
+        -czf "${BACKUP_PATH}/alist.tar.gz" -C /opt/cryptex/data alist \
+        || { rc=$?; [ "$rc" -gt 1 ] && echo "  WARN: alist tar exited $rc (non-fatal, continuing)"; true; }
+    echo "  alist.tar.gz"
+fi
+
+# Moodle custom plugins (format/ + theme/) — not in the Moodle image, not in git.
+echo "Backing up Moodle plugins..."
+if [ -d /opt/cryptex/data/moodle-plugins ]; then
+    tar -czf "${BACKUP_PATH}/moodle-plugins.tar.gz" -C /opt/cryptex/data moodle-plugins \
+        || { rc=$?; [ "$rc" -gt 1 ] && echo "  WARN: moodle-plugins tar exited $rc (non-fatal, continuing)"; true; }
+    echo "  moodle-plugins.tar.gz"
+fi
+
+# psidex.com portfolio — deployed via rsync, NOT git-tracked. Resume PDFs and
+# case studies exist only here.
+echo "Backing up portfolio..."
+if [ -d /opt/cryptex/data/portfolio ]; then
+    tar -czf "${BACKUP_PATH}/portfolio.tar.gz" -C /opt/cryptex/data portfolio \
+        || { rc=$?; [ "$rc" -gt 1 ] && echo "  WARN: portfolio tar exited $rc (non-fatal, continuing)"; true; }
+    echo "  portfolio.tar.gz"
+fi
+
+# SB course build output — 84M of assets (png/mp3) verified absent from the
+# AI_Space repo, so this is the only copy.
+echo "Backing up SB course..."
+if [ -d /opt/cryptex/data/sb-course ]; then
+    tar -czf "${BACKUP_PATH}/sb-course.tar.gz" -C /opt/cryptex/data sb-course \
+        || { rc=$?; [ "$rc" -gt 1 ] && echo "  WARN: sb-course tar exited $rc (non-fatal, continuing)"; true; }
+    echo "  sb-course.tar.gz"
+fi
+
 # .env
 cp "${COMPOSE_DIR}/.env" "${BACKUP_PATH}/dot-env"
 echo "  dot-env"

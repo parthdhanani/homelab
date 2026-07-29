@@ -11,7 +11,11 @@ echo "running: $RUNNING (intentionally disabled: $(echo $DISABLED | wc -w))"
 [ -n "$UNHEALTHY" ] && W "unhealthy: $UNHEALTHY"
 
 echo "== backup =="
-LAST_SNAP=$(docker exec cryptex-kopia kopia snapshot list /backups --max-results=1 --json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['startTime'])" 2>/dev/null)
+# backup pipeline migrated to /backup-stage; /backups kept as legacy fallback so a
+# future path change can't silently blind this check — take whichever is newest.
+SNAP_STAGE=$(docker exec cryptex-kopia kopia snapshot list /backup-stage --max-results=1 --json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['startTime'])" 2>/dev/null)
+SNAP_LEGACY=$(docker exec cryptex-kopia kopia snapshot list /backups --max-results=1 --json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['startTime'])" 2>/dev/null)
+LAST_SNAP=$(printf '%s\n%s\n' "$SNAP_STAGE" "$SNAP_LEGACY" | sort -r | head -1)
 if [ -n "$LAST_SNAP" ]; then
     AGE_H=$(python3 -c "
 from datetime import datetime,timezone
