@@ -334,6 +334,7 @@ if [ -d "$HOME_DIR/.claude" ]; then
         --exclude='.claude/_repos' \
         --exclude='.claude/plugins' \
         --exclude='.claude/.git'                  `# 4690 objects — repo lives on GitHub (claude-dotfiles)` \
+        --exclude='.claude/.code-review-graph'    `# 1.4GB live CRG index, regenerable from source` \
         --exclude='**/node_modules' \
         -czf "${BACKUP_PATH}/home-tooling.tar.gz" \
         -C "$HOME_DIR" \
