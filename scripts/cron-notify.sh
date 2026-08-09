@@ -10,7 +10,6 @@ source /opt/cryptex/.env 2>/dev/null || true
 set +a
 
 SCRIPT="$1"
-TO="${ADMIN_EMAIL:-admin@${DOMAIN:-yourdomain.com}}"
 LABEL=$(basename "${SCRIPT:-unknown}")
 
 output=$("$@" 2>&1)
@@ -18,15 +17,9 @@ rc=$?
 
 if [ $rc -ne 0 ]; then
     TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    (
-        printf "To: %s\n" "$TO"
-        printf "Subject: [Cryptex FAIL] %s (%s)\n" "$LABEL" "$TS"
-        printf "Content-Type: text/plain\n\n"
-        printf "Script:    %s\n" "$SCRIPT"
-        printf "Exit code: %s\n" "$rc"
-        printf "Time:      %s\n\n" "$TS"
-        printf "%s\n" "$output"
-    ) | msmtp --from=default "$TO" || echo "cron-notify.sh: FAILED to send failure-alert email for $LABEL (rc=$?)" >&2
+    BODY=$(printf "Script:    %s\nExit code: %s\nTime:      %s\n\n%s\n" "$SCRIPT" "$rc" "$TS" "$output")
+    /home/ubuntu/.claude/scripts/notify.sh "$LABEL failed" "$BODY" critical \
+        || echo "cron-notify.sh: FAILED to send failure-alert email for $LABEL (rc=$?)" >&2
 fi
 
 # Echo output so cron log still captures it

@@ -53,42 +53,47 @@ if [ "$VOTED" -gt 0 ] && [ -f "$RANK" ]; then
         | sed -E 's/^\| ([0-9]+) \| \[\[[^|]*\\\|([^]]*)\]\][^|]*\| ([0-9]+) .*/\1. \2 — \3/')
 fi
 
+# Shared dark-theme tokens — kept identical to lib/til_lib.py's palette so every
+# dark-mode email (duel, TIL) reads as one system rather than two near-matches.
+BG="#0b0b0c"; CARD="#121214"; LINE="#26262a"
+FG="#e8e8e6"; DIM="#8a8a94"; FAINT="#5a5a63"
+
 poster_cell() {  # $1=url $2=title $3=year
     if [ -n "$1" ]; then
-        printf '<td width="50%%" align="center" style="padding:6px"><img src="%s" width="200" style="border-radius:10px;display:block;border:1px solid #26262a"><div style="font:600 15px sans-serif;color:#e8e8e6;margin-top:9px">%s</div><div style="font:13px sans-serif;color:#8a8a94">%s</div></td>' "$1" "$2" "$3"
+        printf '<td width="50%%" align="center" style="padding:6px"><img src="%s" width="200" style="border-radius:10px;display:block;border:1px solid %s"><div style="font:600 15px sans-serif;color:%s;margin-top:9px">%s</div><div style="font:13px sans-serif;color:%s">%s</div></td>' "$1" "$LINE" "$FG" "$2" "$DIM" "$3"
     else
-        printf '<td width="50%%" align="center" style="padding:6px"><div style="width:200px;height:300px;background:#1c1c20;border:1px solid #26262a;border-radius:10px;display:inline-block;line-height:300px;color:#8a8a94;font:13px sans-serif">no poster</div><div style="font:600 15px sans-serif;color:#e8e8e6;margin-top:9px">%s</div><div style="font:13px sans-serif;color:#8a8a94">%s</div></td>' "$2" "$3"
+        printf '<td width="50%%" align="center" style="padding:6px"><div style="width:200px;height:300px;background:%s;border:1px solid %s;border-radius:10px;display:inline-block;line-height:300px;color:%s;font:13px sans-serif">no poster</div><div style="font:600 15px sans-serif;color:%s;margin-top:9px">%s</div><div style="font:13px sans-serif;color:%s">%s</div></td>' "$CARD" "$LINE" "$DIM" "$FG" "$2" "$DIM" "$3"
     fi
 }
 
 TOP_HTML=""
-[ -n "$TOP" ] && TOP_HTML="<div style=\"font:13px sans-serif;color:#8a8a94;margin-top:26px;line-height:1.7\"><b style=\"color:#c8c8cc\">Leaderboard so far</b><br>$(printf '%s' "$TOP" | sed 's/$/<br>/')</div>"
+[ -n "$TOP" ] && TOP_HTML="<div style=\"font:13px sans-serif;color:$DIM;margin-top:26px;line-height:1.7\"><b style=\"color:$FG\">Leaderboard so far</b><br>$(printf '%s' "$TOP" | sed 's/$/<br>/')</div>"
 
 BODY=$(cat <<HTML
-<div style="background:#0b0b0c;padding:30px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+<div style="background:$BG;padding:30px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <div style="max-width:520px;margin:0 auto;text-align:center">
-  <div style="font:13px sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#6a6a74">Taste duel</div>
-  <div style="font:600 19px sans-serif;color:#e8e8e6;margin:8px 0 20px">Which would you rather rewatch tonight?</div>
+  <div style="font:13px sans-serif;letter-spacing:.14em;text-transform:uppercase;color:$FAINT">Taste duel</div>
+  <div style="font:600 19px sans-serif;color:$FG;margin:8px 0 20px">Which would you rather rewatch tonight?</div>
   <table width="100%" cellpadding="0" cellspacing="0"><tr>
     $(poster_cell "$A_P" "$A_T" "$A_Y")
     $(poster_cell "$B_P" "$B_T" "$B_Y")
   </tr></table>
   <div style="margin:24px 0 8px">
-    <a href="$URL" style="background:#e8e8e6;color:#0b0b0c;text-decoration:none;font:600 15px sans-serif;padding:13px 30px;border-radius:10px;display:inline-block">Pick one →</a>
+    <a href="$URL" style="background:$FG;color:$BG;text-decoration:none;font:600 15px sans-serif;padding:13px 30px;border-radius:10px;display:inline-block">Pick one →</a>
   </div>
-  <div style="font:13px sans-serif;color:#6a6a74;line-height:1.6;margin-top:12px">
+  <div style="font:13px sans-serif;color:$FAINT;line-height:1.6;margin-top:12px">
     One tap per pair, keeps going as long as you do.<br>
     $VOTED votes so far · $RATED of $TOTAL watched films ranked
   </div>
   $TOP_HTML
-  <div style="font:12.5px sans-serif;color:#6a6a74;margin-top:20px">
-    <a href="$LIST_URL" style="color:#8a8a94">Browse the full list</a>
+  <div style="font:12.5px sans-serif;color:$FAINT;margin-top:20px">
+    <a href="$LIST_URL" style="color:$DIM">Browse the full list</a>
     &nbsp;·&nbsp;
-    <a href="https://watch.psidex.com/notes/taste-map" style="color:#8a8a94">Taste map</a>
+    <a href="https://watch.psidex.com/notes/taste-map" style="color:$DIM">Taste map</a>
     &nbsp;·&nbsp;
-    <a href="https://watch.psidex.com/notes/til" style="color:#8a8a94">TIL</a>
+    <a href="https://watch.psidex.com/notes/til" style="color:$DIM">TIL</a>
   </div>
-  <div style="font:11.5px sans-serif;color:#4a4a52;margin-top:22px;line-height:1.6">
+  <div style="font:11.5px sans-serif;color:$FAINT;margin-top:22px;line-height:1.6">
     Link expires in 21 days. Ranking lives in the vault at<br>Collections/Movies/🏆 Taste Ranking.md
   </div>
 </div></div>

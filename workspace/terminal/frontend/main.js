@@ -116,12 +116,17 @@ function appendRecentText(chunk) {
 // previously this left the terminal permanently "Disconnected — reload to
 // reconnect" until the user manually refreshed.
 const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+// Path-relative WS base so the page works both at the tunnel root
+// (term.psidex.com/ → /ws) and under a proxy prefix (code-server's
+// /proxy/8085/ → /proxy/8085/ws). An absolute '/ws' hit code-server's own
+// websocket endpoint instead of ours and hung on "connecting".
+const wsBase = location.pathname.replace(/\/[^/]*$/, '');
 let ws;
 let reconnectAttempt = 0;
 let reconnectTimer = null;
 
 function connectWS() {
-  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws = new WebSocket(`${proto}://${location.host}${wsBase}/ws`);
   ws.binaryType = 'arraybuffer';
 
   ws.onopen = () => {

@@ -8,7 +8,7 @@ exec 9>/var/lock/restore-drill.lock
 flock -n 9 || exit 0
 
 SCRATCH=/opt/cryptex/backups/restore-scratch
-FAIL(){ /home/ubuntu/.claude/scripts/notify.sh "restore DRILL FAILED" "$1"; cleanup; exit 1; }
+FAIL(){ /home/ubuntu/.claude/scripts/notify.sh "restore DRILL FAILED" "$1" critical; cleanup; exit 1; }
 cleanup(){ docker rm -f restore-drill-pg >/dev/null 2>&1; sudo rm -rf "$SCRATCH"; }
 
 AVAIL_GB=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
@@ -33,7 +33,7 @@ for CAND in $(docker exec cryptex-kopia kopia ls "$SNAP_ID" 2>/dev/null | grep '
     BAD_TARS="$BAD_TARS $CAND(corrupt-in-snapshot)"
 done
 [ -z "$NEWEST_TAR" ] && FAIL "no restorable tar in snapshot $SNAP_ID — tried:$BAD_TARS"
-[ -n "$BAD_TARS" ] && /home/ubuntu/.claude/scripts/notify.sh "restore drill: newest tar bad, fallback used" "Bad in snapshot:$BAD_TARS — drill continued with $NEWEST_TAR. Investigate backup double-write (task on file)."
+[ -n "$BAD_TARS" ] && /home/ubuntu/.claude/scripts/notify.sh "restore drill: newest tar bad, fallback used" "Bad in snapshot:$BAD_TARS — drill continued with $NEWEST_TAR. Investigate backup double-write (task on file)." warning
 SQL=$(find "$SCRATCH" -name postgres_all.sql | head -1)
 [ -s "$SQL" ] || FAIL "postgres_all.sql empty"
 

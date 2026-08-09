@@ -73,8 +73,8 @@ $(printf '%s' "$PROBLEMS" | sed 's/^/- /')
 $TRIAGE"
 
 HTML=$(printf '%s' "$BODY" | python3 "$AGENT_HOME/lib/render_email.py" \
-        "Ops Alert" "$(date -u '+%a %d %b %H:%M UTC')")
-send_mail "[OPS ALERT] VPS issues found — $(date -u '+%a %d %b %H:%M')" "$HTML" html
+        "Ops Alert" "$(date -u '+%a %d %b %H:%M UTC')" warning)
+send_mail "[Warning] VPS issues found — $(date -u '+%a %d %b %H:%M')" "$HTML" html
 write_pkm "00 Capture/Daily/Agents/ops-alerts.md" "$PROBLEMS
 --- triage ---
 $TRIAGE"

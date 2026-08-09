@@ -173,22 +173,18 @@ if [ -z "$NEW" ]; then
 fi
 
 NEW_COUNT=$(printf '%s\n' "$NEW" | grep -c .)
-{
-    echo "To: $TO"
-    echo "From: ${ADMIN_EMAIL:-admin@${DOMAIN:-yourdomain.com}}"
-    echo "Subject: [Cryptex] Container updates available ($(date +%Y-%m-%d))"
-    echo "Content-Type: text/plain"
-    echo ""
+BODY=$(
     echo "New since last report:"
     echo ""
-    printf '%s\n' "$NEW"
+    printf '%s\n' "$NEW" | sed 's/^  */- /'
     echo ""
     echo "All pending (${#UPDATES[@]}):"
     echo ""
-    printf '%s\n' "$CURRENT"
+    printf '%s\n' "$CURRENT" | sed 's/^  */- /'
     echo ""
     echo "Review at https://docker.${DOMAIN:-yourdomain.com}"
     echo "Run update: bash /opt/cryptex/update.sh"
-} | msmtp "$TO" 2>/dev/null
+)
+/home/ubuntu/.claude/scripts/notify.sh "Container updates available ($(date +%Y-%m-%d))" "$BODY" warning
 
 log "$NEW_COUNT new of ${#UPDATES[@]} pending, $SKIPPED not comparable, email sent"

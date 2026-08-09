@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Claude Code System Graph</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div id="loading" class="hidden">reading graph…</div>
+
+<div id="topbar">
+  <div id="header-mark">System Graph<span class="dim"> · Claude Code</span></div>
+  <div id="header-sub">click a circle to open it — scroll to zoom, drag to pan</div>
+  <div id="topbar-spacer"></div>
+  <div id="search-wrap">
+    <input id="search" type="text" placeholder="Search nodes…">
+    <div id="search-status"></div>
+  </div>
+</div>
+
+<div id="onboarding" class="hidden">
+  <div id="onboarding-box">
+    <h2>Reading the instrument</h2>
+    <ul>
+      <li><b>Click</b> a big circle to open that category.</li>
+      <li><b>Click</b> a small dot to see its file / details on the left.</li>
+      <li><b>Drag</b> empty space to pan · <b>Scroll</b> to zoom · <b>Drag a dot</b> to move it.</li>
+      <li>Use <b>Search</b> or the panel list on the right to jump around.</li>
+      <li><b>Home</b> button (bottom-left) always brings you back to the overview.</li>
+    </ul>
+    <button id="onboarding-dismiss">Got it</button>
+  </div>
+</div>
+
+<button id="home-btn" title="Back to overview">⟲ overview</button>
+
+<div id="legend"></div>
+
+<div id="sidebar">
+  <div class="section-label">Layout</div>
+  <div id="layout-toggles">
+    <button data-layout="force" class="active">Force</button>
+    <button data-layout="circle">Circle</button>
+    <button data-layout="hex">Hex</button>
+    <button data-layout="rings">Rings</button>
+  </div>
+  <div class="section-label">Panels <span id="panel-hint">(click to open)</span></div>
+  <div id="panel-list"></div>
+  <div class="section-label">Actions</div>
+  <button id="expand-all">Expand all</button>
+  <button id="collapse-all">Collapse all</button>
+  <button id="help-btn">show help again</button>
+</div>
+
+<div id="tooltip" class="hidden"></div>
+
+<div id="inspector" class="hidden">
+  <button id="inspector-close">&times;</button>
+  <h2 id="inspector-title"></h2>
+  <div id="inspector-actions"></div>
+  <div id="inspector-pills"></div>
+  <div id="inspector-meta"></div>
+  <div class="section-label">Connections</div>
+  <ul id="inspector-connections"></ul>
+  <div class="section-label">Content</div>
+  <div id="inspector-content"></div>
+</div>
+
+<script src="d3.v7.min.js"></script>
+<script src="graph.js"></script>
+</body>
+</html>

@@ -1,15 +1,30 @@
 #!/usr/bin/env python3
-"""render_email.py "<Title>" "<subtitle>"  — markdown on stdin -> polished HTML email on stdout.
-Monochrome editorial style, Gmail-safe inline styles. Parses ## sections and '- ' item lists
-of the form:  - **[Headline](url)** — description. (source)
+"""render_email.py "<Title>" "<subtitle>" ["<severity>"]  — markdown on stdin -> polished
+HTML email on stdout. Monochrome editorial style, Gmail-safe inline styles. Parses ##
+sections and '- ' item lists of the form:  - **[Headline](url)** — description. (source)
+
+SEVERITY (optional 3rd arg) distinguishes alert mail from routine digest mail so the two
+are visually distinct in the inbox, not identical cards that require opening to tell apart:
+  "warning"  — amber left border + badge (needs attention, not urgent)
+  "critical" — red left border + badge (real problem, check now)
+  omitted    — routine digest, unchanged monochrome card (default, all existing callers)
 """
 import sys, re, html
 
 TITLE = sys.argv[1] if len(sys.argv) > 1 else "Brief"
 SUBTITLE = sys.argv[2] if len(sys.argv) > 2 else ""
+SEVERITY = sys.argv[3] if len(sys.argv) > 3 else ""
 
 INK, MUTED, FAINT, RULE, BG, CARD = "#161616", "#5c5c5c", "#8a8a8a", "#e6e3dd", "#ffffff", "#fbfaf8"
 FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
+
+SEVERITY_COLOR = {"warning": "#a66a00", "critical": "#b3261e"}
+ACCENT = SEVERITY_COLOR.get(SEVERITY, "")
+BORDER_LEFT = f"border-left:4px solid {ACCENT};" if ACCENT else ""
+BADGE = (f'<div style="display:inline-block;margin-top:8px;padding:3px 9px;'
+         f'border-radius:20px;background:{ACCENT}1a;color:{ACCENT};'
+         f'font:700 11px/1 {FONT};letter-spacing:.06em;text-transform:uppercase">'
+         f'{SEVERITY}</div>') if ACCENT else ""
 
 def inline(s):
     """Convert inline markdown (links, bold) to HTML, escaping the rest."""
@@ -103,9 +118,9 @@ sub = f'<div style="font:400 13px/1.4 {FONT};color:{FAINT};margin-top:3px">{html
 print(f"""<!DOCTYPE html><html><body style="margin:0;padding:0;background:{BG}">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{BG}">
 <tr><td align="center" style="padding:28px 16px">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:{CARD};border:1px solid {RULE};border-radius:10px">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:{CARD};border:1px solid {RULE};{BORDER_LEFT}border-radius:10px">
 <tr><td style="padding:28px 30px 18px 30px">
-<div style="font:700 22px/1.2 {FONT};color:{INK};letter-spacing:-.01em">{html.escape(TITLE)}</div>{sub}
+<div style="font:700 22px/1.2 {FONT};color:{INK};letter-spacing:-.01em">{html.escape(TITLE)}</div>{sub}{BADGE}
 </td></tr>
 <tr><td style="padding:0 30px 24px 30px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">{''.join(rows)}</table>

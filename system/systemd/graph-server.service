@@ -1,0 +1,20 @@
+[Unit]
+Description=Read-only aggregator for the Claude Code system graph visualizer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/cryptex/graph-server
+ExecStart=/usr/bin/python3 /opt/cryptex/graph-server/graph_server.py
+Restart=on-failure
+RestartSec=5
+MemoryMax=256M
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadOnlyPaths=/home/ubuntu/AI_Space/.code-review-graph /opt/cryptex/graphify-out /home/ubuntu/.claude /home/ubuntu/AI_Space/docs /opt/cryptex/graph-viz
+
+[Install]
+WantedBy=multi-user.target

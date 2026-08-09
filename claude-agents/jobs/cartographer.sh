@@ -183,20 +183,23 @@ BROKEN=$(python3 "$(dirname "$0")/../lib/fixlinks.py" "$MOC/Cinema-and-Arts.md" 
 log "link repair: $(printf '%s' "$BROKEN" | head -1)"
 
 # ---- email --------------------------------------------------------------------------
+# Light-theme tokens — kept identical to lib/render_email.py's palette so this reads
+# as the same system as the digest emails, not a slightly-off one-off.
+INK="#161616"; MUTED="#5c5c5c"; FAINT="#8a8a8a"; RULE="#e6e3dd"
 BODY="<div style=\"font-family:-apple-system,sans-serif;max-width:620px;margin:0 auto\">
-<div style=\"font:13px sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#888\">Cartographer</div>
-<div style=\"font:600 20px sans-serif;margin:6px 0 16px\">Your collection, mapped</div>
-<div style=\"font:14px/1.6 sans-serif;color:#444\">Read $LINES notes across films, TV, anime and books.</div>
-<div style=\"font:13px/1.8 sans-serif;color:#444;margin-top:16px\">
+<div style=\"font:13px sans-serif;letter-spacing:.14em;text-transform:uppercase;color:$FAINT\">Cartographer</div>
+<div style=\"font:600 20px sans-serif;color:$INK;margin:6px 0 16px\">Your collection, mapped</div>
+<div style=\"font:14px/1.6 sans-serif;color:$MUTED\">Read $LINES notes across films, TV, anime and books.</div>
+<div style=\"font:13px/1.8 sans-serif;color:$MUTED;margin-top:16px\">
 <b>40 Synthesis/taste-map.md</b> — the argument: real clusters, the watched-vs-queued gap, blind spots, 5 recommendations<br>
 <b>_Meta/MOC/Cinema-and-Arts.md</b> — rebuilt from the actual collection (old version backed up)<br>
 </div>
-<div style=\"font:12px sans-serif;color:#999;margin-top:14px\">Link integrity: $(printf '%s' "$BROKEN" | head -1)</div>
+<div style=\"font:12px sans-serif;color:$FAINT;margin-top:14px\">Link integrity: $(printf '%s' "$BROKEN" | head -1)</div>
 <div style=\"font:13px sans-serif;margin-top:18px\">
-<a href=\"https://watch.psidex.com/notes/taste-map\" style=\"color:#555\">Read the full map →</a>
-&nbsp;·&nbsp;<a href=\"https://watch.psidex.com/notes/cinema\" style=\"color:#555\">Cinema MOC</a>
-&nbsp;·&nbsp;<a href=\"https://watch.psidex.com/list/movies\" style=\"color:#555\">Collection</a></div>
-<div style=\"font:14px/1.7 sans-serif;color:#333;margin-top:22px;border-top:1px solid #eee;padding-top:16px\">
+<a href=\"https://watch.psidex.com/notes/taste-map\" style=\"color:$INK\">Read the full map →</a>
+&nbsp;·&nbsp;<a href=\"https://watch.psidex.com/notes/cinema\" style=\"color:$INK\">Cinema MOC</a>
+&nbsp;·&nbsp;<a href=\"https://watch.psidex.com/list/movies\" style=\"color:$INK\">Collection</a></div>
+<div style=\"font:14px/1.7 sans-serif;color:$INK;margin-top:22px;border-top:1px solid $RULE;padding-top:16px\">
 $(printf '%s' "$MAP" | head -60 | md_to_html)
 </div></div>"
 

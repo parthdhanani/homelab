@@ -1123,6 +1123,7 @@ services:
       - PUID=1001
       - PGID=1001
       - OBSIDIAN_VERSION=1.12.7
+      - PROXY_ALLOW_PRIVATE_HOSTS=172.18.0.1
     volumes:
       - /opt/cryptex/data/pkm:/vaults/PKM
       - /opt/cryptex/data/ignis:/app/data

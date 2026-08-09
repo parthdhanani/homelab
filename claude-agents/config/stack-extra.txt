@@ -1,0 +1,43 @@
+# stack-extra.txt — tools Parth already runs that the automatic inventory can't see.
+# One token per line: either a bare tool name or an owner/repo slug. Case-insensitive.
+# Consumed by lib/stack_inventory.sh -> lib/gh_gate.py (hard exclusion from the digest).
+
+# Code / infra intelligence (installed as host bins + MCP, not containers)
+tirth8205/code-review-graph
+code-review-graph
+crg-daemon
+graphify
+
+# Backup / DR
+kopia/kopia
+kopia
+garethgeorge/backrest
+
+# Memory / PKM engine
+ob1
+pkm-watcher
+markitdown-watcher
+
+# Networking / access — solved by Cloudflare Tunnel + Tailscale + AdGuard.
+# Listed so the digest stops re-pitching the tunnel/VPN/NAT category every week.
+cloudflared
+tailscale
+tailscaled
+adguardhome
+netbirdio/netbird
+fatedier/frp
+rapiz1/rathole
+jpillora/chisel
+wg-easy/wg-easy
+wiredoor/wiredoor
+n0-computer/iroh
+
+# Automation / agents
+n8n
+claude-agents
+obra/superpowers
+
+# Browser automation (Playwright is the incumbent)
+playwright
+m1k1o/neko
+browser-use/browser-use

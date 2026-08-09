@@ -19,10 +19,10 @@ fi
 
 # Show last 3 snapshots
 echo "Recent snapshots:"
-docker exec cryptex-kopia kopia snapshot list /backups --max-results=3 2>/dev/null || true
+docker exec cryptex-kopia kopia snapshot list /backup-stage --max-results=3 2>/dev/null || true
 
 # Verify integrity of the most recent snapshot
-SNAP_ID=$(docker exec cryptex-kopia kopia snapshot list /backups --max-results=1 --json 2>/dev/null \
+SNAP_ID=$(docker exec cryptex-kopia kopia snapshot list /backup-stage --max-results=1 --json 2>/dev/null \
     | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
 
 if [ -z "$SNAP_ID" ]; then

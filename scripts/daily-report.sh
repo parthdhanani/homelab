@@ -172,6 +172,7 @@ fi
 echo "${TS} [${VERDICT}] hc=${HC_PASS}ok/${HC_WARN}warn/${HC_FAIL}fail disk=${DISK_PCT}% mem_free=${MEM_FREE}MB containers=${TOTAL}" \
     >> /var/log/cryptex-daily-report.log
 
-# Exit non-zero on issues so cron-notify.sh can catch failures
-[ "$VERDICT" = "NEEDS_ATTENTION" ] && exit 1
+# NEEDS_ATTENTION no longer emails on its own — daily-digest.sh (06:30 UTC) is the sole
+# routine VPS-health email and covers the same signal via cryptex-status.sh. Only a real
+# script crash (non-zero from a bug, not this deliberate verdict) should alert here.
 exit 0

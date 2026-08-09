@@ -1,0 +1,20 @@
+[Unit]
+Description=Read-only host stats aggregator for the vault-hud Obsidian plugin
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/cryptex/stats
+ExecStart=/usr/bin/python3 /opt/cryptex/stats/stats.py
+Restart=on-failure
+RestartSec=5
+MemoryMax=128M
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadOnlyPaths=/opt/cryptex/data/pkm
+
+[Install]
+WantedBy=multi-user.target

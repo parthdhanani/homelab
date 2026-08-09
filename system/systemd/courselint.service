@@ -1,0 +1,27 @@
+[Unit]
+Description=Courselint Web Demo
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/AI_Space/complete/courselint
+Environment=PYTHONPATH=/home/ubuntu/AI_Space/complete/courselint
+Environment=SCORM_KIT=/home/ubuntu/.npm-global/bin/scorm-kit
+ExecStart=/home/ubuntu/.local/bin/gunicorn web.app:app \
+  --workers 2 \
+  --worker-class gthread \
+  --threads 2 \
+  --bind 127.0.0.1:5053 \
+  --timeout 120 \
+  --keep-alive 5 \
+  --max-requests 500 \
+  --max-requests-jitter 50 \
+  --access-logfile /var/log/courselint-access.log \
+  --error-logfile /var/log/courselint-error.log \
+  --log-level info
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
