@@ -86,10 +86,10 @@ if [ -d "$BOOKS_DIR" ]; then
 No preamble, no closing remarks, no markdown links, just that one line."
         LINE=$(run_agy "$QPROMPT") || LINE=""
         if [ -n "$LINE" ]; then
-            BRIEF="$BRIEF
+            BRIEF="## Today's Line
+$LINE
 
-## Today's Line
-$LINE"
+$BRIEF"
             printf '%s\t%s\n' "$today" "$PICK" >> "$QSEEN"
             awk -F'\t' -v c="$cutoff30" '$1>=c' "$QSEEN" > "$QSEEN.tmp" && mv "$QSEEN.tmp" "$QSEEN"
         fi
