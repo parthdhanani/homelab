@@ -133,4 +133,19 @@ else
   fi
 fi
 
+
+# -------- uv / uvx --------
+# Astral's Python package/tool runner. Installs to ~/.local/bin as the ubuntu
+# user. Needed for uvx-run tools (e.g. mcp-explorer) to work post-restore.
+if sudo -u ubuntu test -x /home/ubuntu/.local/bin/uv; then
+  skip "uv already installed"
+else
+  log "installing uv"
+  if sudo -u ubuntu HOME=/home/ubuntu sh -c 'curl -LsSf https://astral.sh/uv/install.sh | sh' >/dev/null 2>&1; then
+    ok "uv installed"
+  else
+    warn "uv install failed — as ubuntu run: curl -LsSf https://astral.sh/uv/install.sh | sh"
+  fi
+fi
+
 log "============ 00-system: complete ============"
