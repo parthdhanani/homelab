@@ -388,7 +388,7 @@ services:
   vaultwarden:
     profiles: ["disabled"]
     <<: *defaults
-    image: vaultwarden/server:1.36.0-alpine
+    image: vaultwarden/server:1.37.1-alpine
     container_name: cryptex-vaultwarden
     networks:
       cryptex_net:
@@ -463,7 +463,7 @@ services:
 
   n8n:
     <<: *defaults
-    image: n8nio/n8n:2.32.5
+    image: n8nio/n8n:2.33.7
     container_name: cryptex-n8n
     user: "1000:1000"
     ports:
@@ -653,7 +653,7 @@ services:
   # even if the main tunnel/nginx layer goes down. Do not consolidate into one tunnel.
   uptime-kuma:
     <<: *defaults
-    image: louislam/uptime-kuma:2.4.0
+    image: louislam/uptime-kuma:2.5.0
     container_name: cryptex-uptime-kuma
     networks:
       cryptex_net:
@@ -743,7 +743,7 @@ services:
   shlink-web:
     profiles: ["disabled"]
     <<: *defaults
-    image: shlinkio/shlink-web-client:4.8.0
+    image: shlinkio/shlink-web-client:4.8.1
     container_name: cryptex-shlink-web
     networks:
       cryptex_net:
@@ -764,7 +764,7 @@ services:
   forgejo:
     profiles: ["disabled"]
     <<: *defaults
-    image: codeberg.org/forgejo/forgejo:15.0.1
+    image: codeberg.org/forgejo/forgejo:15.0.6
     container_name: cryptex-forgejo
     networks:
       cryptex_net:
@@ -819,7 +819,7 @@ services:
   miniflux:
     profiles: ["disabled"]
     <<: *defaults
-    image: miniflux/miniflux:2.3.2
+    image: miniflux/miniflux:2.3.3
     container_name: cryptex-miniflux
     networks:
       cryptex_net:
@@ -867,7 +867,7 @@ services:
   actualbudget:
     profiles: ["disabled"]
     <<: *defaults
-    image: actualbudget/actual-server:26.7.0
+    image: actualbudget/actual-server:26.8.1
     container_name: cryptex-actualbudget
     user: "1001:1001"
     networks:
@@ -924,7 +924,7 @@ services:
   librechat:
     profiles: ["disabled"]
     <<: *defaults
-    image: ghcr.io/danny-avila/librechat:v0.8.5
+    image: ghcr.io/danny-avila/librechat:v0.8.7
     container_name: cryptex-librechat
     networks:
       cryptex_net:
@@ -982,7 +982,7 @@ services:
   searxng:
     profiles: ["disabled"]
     <<: *defaults
-    image: searxng/searxng:2026.7.22-ef8f6470e
+    image: searxng/searxng:2026.8.5-1689cb1b5
     container_name: cryptex-searxng
     networks:
       cryptex_net:
@@ -1013,7 +1013,7 @@ services:
   alist:
     profiles: ["disabled"]
     <<: *defaults
-    image: openlistteam/openlist:v4.2.4
+    image: openlistteam/openlist:v4.2.5
     container_name: cryptex-alist
     networks:
       cryptex_net:
@@ -1041,7 +1041,7 @@ services:
   stirling-pdf:
     profiles: ["disabled"]
     <<: *defaults
-    image: frooodle/s-pdf:2.14.2
+    image: frooodle/s-pdf:2.14.3
     container_name: cryptex-stirling-pdf
     networks:
       cryptex_net:
@@ -1148,7 +1148,7 @@ services:
   pocketid:
     profiles: ["disabled"]
     <<: *defaults
-    image: ghcr.io/pocket-id/pocket-id:v2.6.2
+    image: ghcr.io/pocket-id/pocket-id:v2.13.0
     container_name: cryptex-pocketid
     networks:
       cryptex_net:
