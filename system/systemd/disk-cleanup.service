@@ -1,0 +1,8 @@
+[Unit]
+Description=Weekly proactive disk cleanup (docker prune, WAL checkpoint, caches)
+
+[Service]
+Type=oneshot
+User=ubuntu
+Environment=HOME=/home/ubuntu
+ExecStart=/home/ubuntu/.claude/scripts/disk-cleanup.sh
