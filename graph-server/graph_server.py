@@ -427,7 +427,7 @@ def _route_backing_token(target: str, container_names: set) -> str:
 # Host-systemd-backed routes (no container) — TUNNEL.md names the unit or a
 # recognizable short name; mapped explicitly since there's no docker ps to query.
 _HOST_UNIT_BY_HOST = {
-    "code.psidex.com": "code-server.service",
+    "code.psidex.com": "code-server@ubuntu.service",
     "term.psidex.com": "cryptex-terminal.service",  # host node process, not a container despite the name
     "sb.psidex.com": "sb-tool.service",
     "watch.psidex.com": "kinolist-server.service",
