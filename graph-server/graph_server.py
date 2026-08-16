@@ -28,7 +28,6 @@ MEMORY_DIR = os.path.expanduser("~/.claude/projects/-home-ubuntu-AI-Space/memory
 STATIC_DIR = "/opt/cryptex/graph-viz"
 
 TUNNEL_MD = "/opt/cryptex/TUNNEL.md"
-HEALTH_SCRIPT = "/opt/cryptex/scripts/health-check.sh"
 ASK_TIMEOUT = 45
 
 CLAUDE_AGENT_JOBS = [
@@ -383,17 +382,6 @@ def _parse_tunnel_routes() -> dict:
                 host, target, access = m.group(1), m.group(2), m.group(3)
                 routes[host] = {"target": target, "access": access}
     return routes
-
-
-def _parse_health_check() -> dict:
-    """display-name -> 'OK'|'FAIL'|'WARN' from a live run of health-check.sh."""
-    out = _run(["bash", HEALTH_SCRIPT], timeout=30)
-    status = {}
-    for line in out.splitlines():
-        m = re.match(r"^\s{2}([A-Za-z][\w .()-]*?)\s{2,}(OK|FAIL|WARN)\s*$", line)
-        if m:
-            status[m.group(1).strip()] = m.group(2)
-    return status
 
 
 def _docker_ps() -> list:
