@@ -14,10 +14,20 @@
   <div id="header-mark">System Graph<span class="dim"> · Claude Code</span></div>
   <div id="header-sub">click a circle to open it — scroll to zoom, drag to pan</div>
   <div id="topbar-spacer"></div>
+  <div id="ask-wrap">
+    <input id="ask-input" type="text" placeholder="Ask about your setup — e.g. what's down right now?">
+    <button id="ask-submit">Ask</button>
+  </div>
   <div id="search-wrap">
     <input id="search" type="text" placeholder="Search nodes…">
     <div id="search-status"></div>
   </div>
+</div>
+
+<div id="ask-panel" class="hidden">
+  <button id="ask-close">&times;</button>
+  <div id="ask-question"></div>
+  <div id="ask-answer"></div>
 </div>
 
 <div id="onboarding" class="hidden">

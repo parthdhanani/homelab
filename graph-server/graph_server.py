@@ -27,6 +27,10 @@ DOCS_DIR = "/home/ubuntu/AI_Space/docs"
 MEMORY_DIR = os.path.expanduser("~/.claude/projects/-home-ubuntu-AI-Space/memory")
 STATIC_DIR = "/opt/cryptex/graph-viz"
 
+TUNNEL_MD = "/opt/cryptex/TUNNEL.md"
+HEALTH_SCRIPT = "/opt/cryptex/scripts/health-check.sh"
+ASK_TIMEOUT = 45
+
 CLAUDE_AGENT_JOBS = [
     "news", "monitor", "jobhunt", "jobhunt-status-sync", "movies-tv", "movies",
     "til", "deepdive", "duel", "digest", "github", "movies-anime", "cartographer",
@@ -367,9 +371,144 @@ def cluster_docs() -> dict:
     return {"nodes": nodes, "edges": edges}
 
 
+def _parse_tunnel_routes() -> dict:
+    """hostname -> {target, access} from TUNNEL.md's markdown table."""
+    routes = {}
+    if not os.path.exists(TUNNEL_MD):
+        return routes
+    with open(TUNNEL_MD, encoding="utf-8") as fh:
+        for line in fh:
+            m = re.match(r"^\|\s*([\w.-]+\.psidex\.com)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|$", line)
+            if m:
+                host, target, access = m.group(1), m.group(2), m.group(3)
+                routes[host] = {"target": target, "access": access}
+    return routes
+
+
+def _parse_health_check() -> dict:
+    """display-name -> 'OK'|'FAIL'|'WARN' from a live run of health-check.sh."""
+    out = _run(["bash", HEALTH_SCRIPT], timeout=30)
+    status = {}
+    for line in out.splitlines():
+        m = re.match(r"^\s{2}([A-Za-z][\w .()-]*?)\s{2,}(OK|FAIL|WARN)\s*$", line)
+        if m:
+            status[m.group(1).strip()] = m.group(2)
+    return status
+
+
+def _docker_ps() -> list:
+    out = _run(["docker", "ps", "-a", "--format",
+                "{{.Names}}\t{{.Status}}\t{{.Image}}\t{{.RunningFor}}"])
+    containers = []
+    for line in out.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 4:
+            continue
+        name, status, image, running_for = parts
+        containers.append({
+            "name": name, "status": status, "image": image, "running_for": running_for,
+            "up": status.startswith("Up"),
+            "healthy": "(healthy)" in status, "unhealthy": "(unhealthy)" in status,
+        })
+    return containers
+
+
+# TUNNEL.md target strings name their backing container or host-systemd-unit
+# in prose, either as an explicit cryptex-* name or a "(shortname)" parenthetical
+# next to the container IP — try both before falling back to a host-service tag.
+def _route_backing_token(target: str, container_names: set) -> str:
+    m = re.search(r"\b(cryptex-[\w-]+)\b", target)
+    if m and m.group(1) in container_names:
+        return m.group(1)
+    m2 = re.search(r"\(([\w-]+)\)", target)
+    if m2:
+        if m2.group(1) in container_names:
+            return m2.group(1)
+        # Returned even when not currently running — a stopped/disabled compose
+        # service still needs this token so the disabled-profile check below
+        # can recognize it instead of reporting a false UNKNOWN.
+        return f"cryptex-{m2.group(1)}"
+    m3 = re.search(r"\b([\w.-]+\.service)\b", target)
+    if m3:
+        return m3.group(1)
+    if "host" in target.lower():
+        return "host service"
+    return re.sub(r"\s+", "-", target.strip().lower())
+
+
+# Host-systemd-backed routes (no container) — TUNNEL.md names the unit or a
+# recognizable short name; mapped explicitly since there's no docker ps to query.
+_HOST_UNIT_BY_HOST = {
+    "code.psidex.com": "code-server.service",
+    "term.psidex.com": "cryptex-terminal.service",  # host node process, not a container despite the name
+    "sb.psidex.com": "sb-tool.service",
+    "watch.psidex.com": "kinolist-server.service",
+    "dev.psidex.com": "kinolist-dev.service",
+}
+
+
+def _disabled_compose_services() -> set:
+    out = _run(["docker", "compose", "-f", "/opt/cryptex/docker-compose.yml",
+                "--profile", "disabled", "config", "--services"], timeout=15)
+    return set(out.splitlines())
+
+
+def cluster_services() -> dict:
+    nodes, edges = [], []
+    routes = _parse_tunnel_routes()
+    container_list = _docker_ps()
+    containers = {c["name"]: c for c in container_list}
+    container_names = set(containers)
+    disabled = _disabled_compose_services()
+    routed_containers = set()
+
+    for host, info in routes.items():
+        token = _route_backing_token(info["target"], container_names)
+        c = containers.get(token)
+        unit = _HOST_UNIT_BY_HOST.get(host)
+        unit_state = None
+        if c:
+            routed_containers.add(token)
+            status = "OK" if (c["up"] and not c["unhealthy"]) else "FAIL"
+        elif unit:
+            unit_state = _run(["systemctl", "is-active", unit]).strip()
+            status = "OK" if unit_state == "active" else "FAIL"
+        elif token.replace("cryptex-", "") in disabled or token in disabled:
+            status = "DISABLED"
+        else:
+            status = "UNKNOWN"
+        nodes.append({
+            "id": f"service-route-{host}", "label": host, "cluster": "services",
+            "kind": "public_route",
+            "meta": {
+                "backing": token if c else (unit or token), "target": info["target"],
+                "access": info["access"], "status": status, "url": f"https://{host}",
+                "container_status": c["status"] if c else unit_state,
+                "image": c["image"] if c else None,
+                "uptime": c["running_for"] if c else None,
+            },
+        })
+
+    for name, c in sorted(containers.items()):
+        if name in routed_containers:
+            continue
+        nodes.append({
+            "id": f"service-container-{name}", "label": name, "cluster": "services",
+            "kind": "internal_container",
+            "meta": {
+                "status": "OK" if (c["up"] and not c["unhealthy"]) else "FAIL",
+                "container_status": c["status"], "image": c["image"],
+                "uptime": c["running_for"],
+            },
+        })
+
+    return {"nodes": nodes, "edges": edges}
+
+
 CLUSTER_LOADERS = {
     "flows": cluster_flows, "links": cluster_links, "skills": cluster_skills,
     "agents": cluster_agents, "crons": cluster_crons, "docs": cluster_docs,
+    "services": cluster_services,
 }
 CLUSTER_EXPANDERS = {
     "flows": cluster_flows_expand, "links": cluster_links_expand,
@@ -417,6 +556,51 @@ def get_node_content(file_path: str) -> dict:
             return {"content": fh.read(20000)}
     except OSError:
         return {"content": None}
+
+
+def ask_claude(question: str, scope: str) -> dict:
+    """Answer a question grounded in this graph's own live data — the same
+    cluster loaders the visualization uses, not a separate fact source. Runs
+    `claude -p` synchronously; read-only, no tool access, so it can't act on
+    anything it observes here."""
+    question = (question or "").strip()
+    if not question:
+        return {"answer": "(empty question)"}
+    if len(question) > 2000:
+        return {"answer": "(question too long)"}
+
+    context_parts = []
+    if scope in CLUSTER_LOADERS:
+        result = CLUSTER_LOADERS[scope]()
+        context_parts.append(f"Live '{scope}' cluster data (JSON, {len(result['nodes'])} nodes):\n"
+                              + json.dumps(result, indent=None)[:12000])
+    else:
+        for name in ("services", "agents", "crons"):
+            result = CLUSTER_LOADERS[name]()
+            context_parts.append(f"Live '{name}' summary ({len(result['nodes'])} nodes):\n"
+                                  + json.dumps([{"label": n["label"], "kind": n["kind"],
+                                                  "status": n.get("meta", {}).get("status")}
+                                                 for n in result["nodes"]])[:4000])
+    context = "\n\n".join(context_parts)
+
+    prompt = (
+        "You are answering a question inside a live infra/code dashboard, grounded ONLY in "
+        "the JSON context below (real-time data from this VPS, not general knowledge). "
+        "Be direct and short — a few sentences or a short list, no preamble, no markdown headers. "
+        "If the context doesn't contain the answer, say so plainly instead of guessing.\n\n"
+        f"CONTEXT:\n{context}\n\nQUESTION: {question}"
+    )
+    try:
+        proc = subprocess.run(
+            ["claude", "-p", prompt],
+            capture_output=True, text=True, timeout=ASK_TIMEOUT,
+        )
+        answer = proc.stdout.strip() or proc.stderr.strip() or "(no response)"
+    except subprocess.TimeoutExpired:
+        answer = "(timed out — try a narrower question)"
+    except OSError:
+        answer = "(claude CLI not available on this host)"
+    return {"answer": answer}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -485,6 +669,24 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._static(path)
 
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/"
+        if path != "/ask":
+            self.send_response(404)
+            self.end_headers()
+            return
+        length = int(self.headers.get("Content-Length", 0))
+        if length > 4096:
+            self._json({"error": "request too large"}, 413)
+            return
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except json.JSONDecodeError:
+            self._json({"error": "invalid JSON"}, 400)
+            return
+        self._json(ask_claude(body.get("question", ""), body.get("scope", "")))
+
 
 def demo():
     """Self-check: each cluster loader returns a shape-correct dict against live paths."""
@@ -498,6 +700,9 @@ def demo():
     real_file = os.path.expanduser("~/.claude/departments.md")
     assert get_node_content(real_file)["content"]
     assert get_node_content("/etc/shadow")["content"] is None
+    svc = cluster_services()
+    assert len(svc["nodes"]) > 0, "services cluster returned no nodes"
+    assert any(n["kind"] == "public_route" for n in svc["nodes"]), "no public_route nodes"
     print("graph_server.py self-check OK")
 
 

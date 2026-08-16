@@ -1,8 +1,9 @@
 const API = "";
 const CLUSTER_COLORS = {
   flows: "#5aab9c", links: "#b586c4", skills: "#8ab06a",
-  agents: "#c97a52", crons: "#c15a5a", docs: "#7d92a8",
+  agents: "#c97a52", crons: "#c15a5a", docs: "#7d92a8", services: "#c9932f",
 };
+const STATUS_COLORS = { OK: "#6fae6f", FAIL: "#c15a5a", DISABLED: "#5a5240", UNKNOWN: "#7a7260" };
 const BG = "#15130f";
 const FONT_DISPLAY = "Fraunces, Georgia, serif";
 const FONT_MONO = '"Plex Mono", ui-monospace, monospace';
@@ -303,6 +304,15 @@ function draw() {
       ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
       ctx.stroke();
     }
+    // Live status dot for service/route nodes — the one place a glance should
+    // answer "is it actually up" without opening the inspector.
+    if (n.meta?.status && !isContainer) {
+      const sc = STATUS_COLORS[n.meta.status] || "#7a7260";
+      ctx.beginPath();
+      ctx.arc(n.x + r * 0.68, n.y - r * 0.68, Math.max(2, 2.4 / transform.k), 0, Math.PI * 2);
+      ctx.fillStyle = sc;
+      ctx.fill();
+    }
     if (r >= 12 || match) {
       const isCluster = n.kind === "cluster_summary";
       ctx.fillStyle = dim ? "#4a4432" : "#ece5d5";
@@ -474,6 +484,13 @@ async function openInspector(n) {
   flyBtn.textContent = "Fly to";
   flyBtn.onclick = () => flyTo(n);
   actionsEl.appendChild(flyBtn);
+  if (meta.url) {
+    const openBtn = document.createElement("button");
+    openBtn.textContent = "Open →";
+    openBtn.className = "primary";
+    openBtn.onclick = () => window.open(meta.url, "_blank", "noopener");
+    actionsEl.appendChild(openBtn);
+  }
   if (n.file_path) {
     const copyBtn = document.createElement("button");
     copyBtn.textContent = "Copy path";
@@ -486,6 +503,9 @@ async function openInspector(n) {
   }
 
   const pills = [pill(n.cluster), pill(n.kind)];
+  if (meta.status) pills.push(pill(meta.status));
+  if (meta.access) pills.push(pill(meta.access === "None" ? "public" : "access-gated"));
+  if (meta.uptime) pills.push(pill(meta.uptime));
   if (meta.size != null) pills.push(pill(fmtBytes(meta.size)));
   if (meta.mtime != null) pills.push(pill(fmtAge(meta.mtime)));
   if (meta.language) pills.push(pill(meta.language));
@@ -495,7 +515,8 @@ async function openInspector(n) {
   if (meta.model_count != null) pills.push(pill(`${meta.model_count} models`));
   document.getElementById("inspector-pills").innerHTML = pills.join("");
 
-  const skipKeys = new Set(["size", "mtime", "language", "line_start", "line_end", "scope", "count", "model_count", "preview"]);
+  const skipKeys = new Set(["size", "mtime", "language", "line_start", "line_end", "scope", "count",
+    "model_count", "preview", "url", "status", "access", "uptime"]);
   const metaRows = [];
   if (n.file_path) metaRows.push(`<div><span class="meta-k">path</span>${n.file_path}</div>`);
   for (const [k, v] of Object.entries(meta)) {
@@ -616,8 +637,47 @@ for (const btn of document.querySelectorAll("#layout-toggles button")) {
   });
 }
 
+async function askJarvis() {
+  const input = document.getElementById("ask-input");
+  const question = input.value.trim();
+  if (!question) return;
+  const panel = document.getElementById("ask-panel");
+  const answerEl = document.getElementById("ask-answer");
+  document.getElementById("ask-question").textContent = question;
+  answerEl.textContent = "thinking…";
+  panel.classList.remove("hidden");
+  const btn = document.getElementById("ask-submit");
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${API}/ask`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, scope: currentAskScope() }),
+    });
+    const data = await res.json();
+    answerEl.textContent = data.answer || data.error || "(no response)";
+  } catch (err) {
+    answerEl.textContent = `(request failed: ${err.message})`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+// Ground the answer in whichever single cluster is currently expanded, if
+// exactly one is — otherwise it falls back to a cross-cluster summary
+// (services + agents + crons) inside ask_claude() server-side.
+function currentAskScope() {
+  return expandedClusters.size === 1 ? [...expandedClusters][0] : "";
+}
+document.getElementById("ask-submit").onclick = askJarvis;
+document.getElementById("ask-input").addEventListener("keydown", e => {
+  if (e.key === "Enter") askJarvis();
+});
+document.getElementById("ask-close").onclick = () => {
+  document.getElementById("ask-panel").classList.add("hidden");
+};
+
 document.getElementById("expand-all").onclick = async () => {
-  for (const name of ["flows", "links", "skills", "agents", "crons", "docs"]) {
+  for (const name of ["flows", "links", "skills", "agents", "crons", "docs", "services"]) {
     await expandCluster(name);
   }
 };

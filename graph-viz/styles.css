@@ -112,6 +112,43 @@ button:focus-visible, input:focus-visible, li:focus-visible {
   white-space: nowrap;
 }
 #topbar-spacer { flex: 1; }
+#ask-wrap { display: flex; gap: 6px; width: 340px; }
+#ask-input {
+  flex: 1; font-family: var(--font-body); font-size: 13px;
+  padding: 8px 12px; background: var(--bg); border: 1px solid var(--border);
+  color: var(--ink); border-radius: 3px;
+}
+#ask-input:focus { outline: none; border-color: var(--accent); }
+#ask-input::placeholder { color: var(--muted); }
+#ask-submit {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.02em;
+  background: var(--bg); border: 1px solid var(--accent); color: var(--accent);
+  padding: 0 14px; border-radius: 3px; cursor: pointer;
+  transition: background 120ms ease-out, color 120ms ease-out;
+}
+#ask-submit:hover { background: var(--accent); color: var(--bg); }
+#ask-submit:disabled { opacity: 0.5; cursor: default; }
+
+#ask-panel {
+  position: fixed; top: 64px; left: 50%; transform: translateX(-50%);
+  width: min(560px, 90vw); max-height: 45vh; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--accent); border-radius: 4px;
+  padding: 16px 20px; z-index: 30; box-shadow: 0 8px 28px rgba(0,0,0,0.4);
+}
+#ask-panel.hidden { display: none; }
+#ask-panel #ask-close {
+  position: absolute; top: 8px; right: 10px; background: none; border: none;
+  color: var(--muted); font-size: 18px; cursor: pointer; line-height: 1;
+}
+#ask-panel #ask-close:hover { color: var(--ink); }
+#ask-question {
+  font-family: var(--font-mono); font-size: 11px; color: var(--muted);
+  margin-bottom: 10px; padding-right: 20px;
+}
+#ask-answer {
+  font-family: var(--font-body); font-size: 13.5px; color: var(--ink);
+  line-height: 1.55; white-space: pre-wrap;
+}
 #search-wrap { position: relative; width: 260px; }
 #search {
   width: 100%; font-family: var(--font-body); font-size: 13px;
@@ -185,6 +222,10 @@ button:focus-visible, input:focus-visible, li:focus-visible {
   padding: 7px 12px; border-radius: 3px; cursor: pointer; transition: border-color 120ms ease-out, color 120ms ease-out;
 }
 #inspector-actions button:hover { border-color: var(--accent); color: var(--ink); }
+#inspector-actions button.primary {
+  border-color: var(--accent); color: var(--accent); background: var(--surface-raised);
+}
+#inspector-actions button.primary:hover { background: var(--accent); color: var(--bg); }
 #inspector-pills { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 14px; }
 .pill {
   font-family: var(--font-mono); font-size: 10px; text-transform: uppercase;
