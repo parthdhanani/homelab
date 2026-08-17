@@ -17,6 +17,7 @@ import sys
 from datetime import datetime
 
 import psutil
+from rich.text import Text
 
 sys.path.insert(0, "/opt/cryptex/graph-server")
 import graph_server as gs  # noqa: E402
@@ -28,28 +29,45 @@ from textual.screen import ModalScreen
 from textual.theme import Theme
 from textual.widgets import (
     Header, Footer, Static, Input, Log, Button, ListView, ListItem, Label,
-    Markdown, DataTable, ContentSwitcher, Rule, LoadingIndicator, Sparkline,
+    Markdown, DataTable, ContentSwitcher, Rule, LoadingIndicator,
 )
 
 # A real design-token theme (Textual's Theme system — same mechanism behind
 # its builtin "nord"/"gruvbox" themes) instead of hex scattered through the
 # stylesheet. One source of truth for every color; CSS below only ever
 # references the $tokens.
+# Cyan HUD palette — arc-reactor glow on near-black, not a warm dashboard.
 JARVIS_THEME = Theme(
     name="jarvis",
     dark=True,
-    primary="#c9932f",       # brass — accent, focus, active nav
-    secondary="#8a7550",
-    accent="#c9932f",
-    warning="#d1a94a",
-    error="#c15a5a",
-    success="#6fae6f",
-    foreground="#e8e0d0",
-    background="#17140f",
-    surface="#1d1912",
-    panel="#221d15",
-    boost="#2a241a",
+    primary="#3ad6d6",       # cyan glow — accent, focus, active nav, graph base
+    secondary="#2a7a8c",
+    accent="#5eeaea",
+    warning="#e8b64c",
+    error="#e2534f",
+    success="#3ad6d6",
+    foreground="#c9e8e8",
+    background="#050a0d",
+    surface="#0a1418",
+    panel="#0e1c22",
+    boost="#123038",
 )
+
+# Gradient stops (dim -> glow) per status, used by Graph for column shading.
+GRAPH_COLORS = {
+    "ok": ("#0e3a3a", "#5eeaea"),
+    "warn": ("#3a2e0e", "#f0c060"),
+    "fail": ("#3a1414", "#f06868"),
+    "neutral": ("#122238", "#6f9bdc"),
+}
+_BLOCKS = " ▁▂▃▄▅▆▇█"
+
+
+def _hex_lerp(c1: str, c2: str, t: float) -> str:
+    t = max(0.0, min(1.0, t))
+    r1, g1, b1 = int(c1[1:3], 16), int(c1[3:5], 16), int(c1[5:7], 16)
+    r2, g2, b2 = int(c2[1:3], 16), int(c2[3:5], 16), int(c2[5:7], 16)
+    return f"#{round(r1 + (r2 - r1) * t):02x}{round(g1 + (g2 - g1) * t):02x}{round(b1 + (b2 - b1) * t):02x}"
 
 STATUS_SCRIPT = "/opt/cryptex/scripts/cryptex-status.sh"
 HEALTH_SCRIPT = "/opt/cryptex/scripts/health-check.sh"
@@ -72,8 +90,8 @@ FEEDS = {
 }
 
 STATUS_STYLE = {
-    "OK": "bold #6fae6f", "FAIL": "bold #c15a5a",
-    "DISABLED": "dim", "UNKNOWN": "bold #d1a94a",
+    "OK": "bold #3ad6d6", "FAIL": "bold #e2534f",
+    "DISABLED": "dim", "UNKNOWN": "bold #e8b64c",
 }
 
 # key -> (number, glyph, label). Plain box-drawing glyphs only — no nerd-font
@@ -233,16 +251,19 @@ class Activity(Static):
 # ── Panes ────────────────────────────────────────────────────────────────
 
 class StatTile(Vertical):
-    """One glanceable metric: label, big value, one-line sub-detail — all
-    colored by status. The unit of the Home grid (btop/wtfutil-style: many
-    of these tiled on screen at once beats one long scrolling status dump)."""
+    """One glanceable metric: label (in the border), big value, one-line
+    sub-detail — all colored by status. The unit of the Home grid
+    (btop-style: many of these tiled on screen at once beats one long
+    scrolling status dump). Title lives in the border itself, not a
+    separate label row — frees a line for the value and reads as an
+    instrument panel, not a form."""
 
     def __init__(self, label: str, tile_id: str):
         super().__init__(id=tile_id, classes="stat-tile")
         self.label_text = label
 
     def compose(self) -> ComposeResult:
-        yield Static(self.label_text, classes="stat-label")
+        self.border_title = self.label_text
         yield Static("—", classes="stat-value", id=f"{self.id}-value")
         yield Static("", classes="stat-sub", id=f"{self.id}-sub")
 
@@ -251,31 +272,97 @@ class StatTile(Vertical):
         v.update(value)
         v.set_classes(f"stat-value stat-{status}")
         self.query_one(f"#{self.id}-sub", Static).update(sub)
+        self.set_classes(f"stat-tile stat-border-{status}")
 
 
-class SparkTile(Vertical):
-    """Stat tile backed by a live trend line instead of a static number —
-    history persists across refreshes for the life of the app."""
+class Graph(Static):
+    """Multi-row block-character history graph (btop/zenith style) — not a
+    flat 1-row Sparkline. Each column is rendered tallest-block-first with
+    partial-block precision, colored by a dim->glow gradient so intensity
+    reads at a glance instead of a single flat accent tint."""
 
-    def __init__(self, label: str, tile_id: str):
+    def __init__(self, tile_id: str, rows: int = 4, status: str = "ok"):
+        super().__init__(id=tile_id)
+        self.rows = rows
+        self.history: list = []
+        self.status = status
+
+    def push(self, value: float, vmax: float, status: str = None) -> None:
+        self.history.append(max(0.0, value))
+        self.history = self.history[-80:]
+        self.vmax = max(vmax, max(self.history) if self.history else 1)
+        if status:
+            self.status = status
+        self.render_graph()
+
+    def render_graph(self) -> None:
+        w = max(self.size.width, 10)
+        data = self.history[-w:]
+        if not data:
+            self.update("")
+            return
+        vmax = self.vmax or 1
+        lo, hi = GRAPH_COLORS.get(self.status, GRAPH_COLORS["ok"])
+        levels = self.rows * 8
+        cols = []
+        for v in data:
+            frac = min(1.0, v / vmax)
+            cols.append(round(frac * levels))
+        lines = []
+        for row in range(self.rows - 1, -1, -1):
+            text = Text()
+            floor = row * 8
+            for i, col_level in enumerate(cols):
+                cell = col_level - floor
+                ch = _BLOCKS[max(0, min(8, cell))]
+                frac = cols[i] / levels if levels else 0
+                color = _hex_lerp(lo, hi, frac)
+                text.append(ch, style=color)
+            lines.append(text)
+        combined = Text("\n").join(lines)
+        self.update(combined)
+
+    def on_resize(self) -> None:
+        self.render_graph()
+
+
+class GraphTile(Vertical):
+    """Stat tile backed by a live multi-row Graph instead of a static
+    number — history persists across refreshes for the life of the app."""
+
+    def __init__(self, label: str, tile_id: str, vmax: float = 100):
         super().__init__(id=tile_id, classes="stat-tile")
         self.label_text = label
-        self.history: list = []
+        self.vmax = vmax
 
     def compose(self) -> ComposeResult:
-        yield Static(self.label_text, classes="stat-label")
-        # Sparkline colors each bar by its value's position within the
-        # *current window's own* min/max — a flat-low series still paints
-        # solid max_color. Pin both ends to the same accent so the shape
-        # of the trend carries the signal, not a misleading per-bar tint.
-        yield Sparkline([], id=f"{self.id}-spark", min_color="#c9932f", max_color="#c9932f")
+        self.border_title = self.label_text
+        yield Graph(f"{self.id}-graph", rows=4)
         yield Static("", classes="stat-sub", id=f"{self.id}-sub")
 
-    def push(self, value: float, sub: str = "") -> None:
-        self.history.append(value)
-        self.history = self.history[-40:]
-        self.query_one(Sparkline).data = self.history
+    def push(self, value: float, sub: str = "", status: str = "ok") -> None:
+        self.query_one(Graph).push(value, self.vmax, status)
         self.query_one(f"#{self.id}-sub", Static).update(sub)
+        self.set_classes(f"stat-tile stat-border-{status}")
+
+
+class CoreMeter(Static):
+    """Per-core CPU bar row — btop/zenith signature: one thin horizontal
+    bar per core rather than a single aggregate number, so an imbalanced
+    load (one hot core vs sixteen idle) is visible at a glance."""
+
+    def set_cores(self, pcts: list) -> None:
+        text = Text()
+        for i, pct in enumerate(pcts):
+            filled = round(pct / 100 * 6)
+            bar = "█" * filled + "░" * (6 - filled)
+            color = _hex_lerp("#3ad6d6", "#f06868", pct / 100)
+            if i:
+                text.append("  ")
+            text.append(f"C{i}", style="dim")
+            text.append(f" {bar} ", style=color)
+            text.append(f"{pct:>3.0f}%", style=color)
+        self.update(text)
 
 
 class HomePane(Vertical):
@@ -293,15 +380,29 @@ class HomePane(Vertical):
             yield StatTile("BACKUP", "tile-backup")
             yield StatTile("HEALTH CHECK", "tile-health")
             yield StatTile("UPDATES", "tile-updates")
-            yield SparkTile("HOST CPU", "tile-host-cpu")
-            yield SparkTile("HOST MEM", "tile-host-mem")
-            yield SparkTile("LOAD (1m)", "tile-load")
             yield StatTile("RECLAIMABLE", "tile-reclaim")
-            yield Static("", id="home-issues", classes="panel wide")
-            yield Static("", id="home-feed", classes="panel wide")
+            yield GraphTile("HOST CPU", "tile-host-cpu", vmax=100)
+            yield GraphTile("HOST MEM", "tile-host-mem", vmax=100)
+            yield GraphTile("LOAD (1m)", "tile-load", vmax=max(1, psutil.cpu_count() * 2))
+            cores = CoreMeter(id="home-cores", classes="panel")
+            cores.border_title = "PER-CORE CPU"
+            yield cores
+            yield GraphTile("NETWORK", "tile-net", vmax=1)
+            procs = DataTable(id="home-procs", classes="panel", zebra_stripes=True)
+            procs.border_title = "TOP PROCESSES"
+            yield procs
+            issues = Static("", id="home-issues", classes="panel")
+            issues.border_title = "ISSUES"
+            yield issues
+            feed = Static("", id="home-feed", classes="panel wide")
+            feed.border_title = "LATEST FEED"
+            yield feed
 
     def on_mount(self) -> None:
         self.query_one("#dashboard-grid").display = False
+        table = self.query_one("#home-procs", DataTable)
+        table.add_columns("PID", "NAME", "CPU%", "MEM%")
+        self._prev_net = None
         self.refresh_data()
 
     def refresh_data(self) -> None:
@@ -358,10 +459,29 @@ class HomePane(Vertical):
                              "--property=LastTriggerUSec"], timeout=5)
         d["cleanup_last"] = cleanup_out.strip().split("=", 1)[-1] if "=" in cleanup_out else ""
 
-        d["host_cpu"] = psutil.cpu_percent(interval=0.5)
+        d["per_core"] = psutil.cpu_percent(interval=0.5, percpu=True)
+        d["host_cpu"] = sum(d["per_core"]) / len(d["per_core"]) if d["per_core"] else 0
         vm = psutil.virtual_memory()
         d["host_mem"] = vm.percent
         d["load1"], d["load5"], d["load15"] = os.getloadavg()
+
+        net = psutil.net_io_counters()
+        now_ts = datetime.now().timestamp()
+        if self._prev_net:
+            prev_bytes, prev_ts = self._prev_net
+            elapsed = max(0.1, now_ts - prev_ts)
+            d["net_bps"] = (net.bytes_sent + net.bytes_recv - prev_bytes) / elapsed
+        else:
+            d["net_bps"] = 0.0
+        self._prev_net = (net.bytes_sent + net.bytes_recv, now_ts)
+
+        procs = []
+        for p in psutil.process_iter(["pid", "name", "cpu_percent", "memory_percent"]):
+            info = p.info
+            if info["memory_percent"] is None:
+                continue
+            procs.append(info)
+        d["top_procs"] = sorted(procs, key=lambda i: i["memory_percent"] or 0, reverse=True)[:8]
 
         d["apt_pkgs"] = _apt_upgradable()
         d["npm_pkgs"] = _npm_outdated()
@@ -445,10 +565,31 @@ class HomePane(Vertical):
             hc_status,
         )
 
-        self.query_one("#tile-host-cpu", SparkTile).push(d["host_cpu"], f"{d['host_cpu']:.0f}% of {psutil.cpu_count()} cores")
-        self.query_one("#tile-host-mem", SparkTile).push(d["host_mem"], f"{d['host_mem']:.0f}% used")
+        cpu_status = "fail" if d["host_cpu"] >= 90 else ("warn" if d["host_cpu"] >= 70 else "ok")
+        self.query_one("#tile-host-cpu", GraphTile).push(
+            d["host_cpu"], f"{d['host_cpu']:.0f}% of {psutil.cpu_count()} cores", cpu_status,
+        )
+        mem_g_status = "fail" if d["host_mem"] >= 90 else ("warn" if d["host_mem"] >= 75 else "ok")
+        self.query_one("#tile-host-mem", GraphTile).push(d["host_mem"], f"{d['host_mem']:.0f}% used", mem_g_status)
         load_status = "fail" if d["load1"] >= psutil.cpu_count() * 2 else ("warn" if d["load1"] >= psutil.cpu_count() else "ok")
-        self.query_one("#tile-load", SparkTile).push(d["load1"], f"{d['load1']:.2f} / {d['load5']:.2f} / {d['load15']:.2f}")
+        self.query_one("#tile-load", GraphTile).push(
+            d["load1"], f"{d['load1']:.2f} / {d['load5']:.2f} / {d['load15']:.2f}", load_status,
+        )
+
+        net_kb = d["net_bps"] / 1024
+        net_tile = self.query_one("#tile-net", GraphTile)
+        net_tile.vmax = max(net_tile.vmax, net_kb * 1.2, 50)
+        net_tile.push(net_kb, f"{net_kb:.0f} KB/s", "ok")
+
+        self.query_one("#home-cores", CoreMeter).set_cores(d["per_core"])
+
+        proc_table = self.query_one("#home-procs", DataTable)
+        proc_table.clear()
+        for p in d["top_procs"]:
+            proc_table.add_row(
+                str(p["pid"]), (p["name"] or "?")[:20],
+                f"{p['cpu_percent'] or 0:.1f}", f"{p['memory_percent'] or 0:.1f}",
+            )
 
         total_updates = len(d["apt_pkgs"]) + len(d["npm_pkgs"]) + len(d["pip_pkgs"]) + len(d["docker_updates"])
         upd_status = "warn" if total_updates else "ok"
@@ -469,15 +610,16 @@ class HomePane(Vertical):
             "warn" if reclaim_bits else "ok",
         )
 
-        issues = f"[bold]VERDICT:[/bold] {d['verdict']}"
+        verdict_color = "#3ad6d6" if d["verdict"] == "HEALTHY" else "#e8b64c"
+        issues = f"[bold {verdict_color}]{d['verdict']}[/bold {verdict_color}]"
         if d["issue_list"]:
             issues += f"  —  {d['issue_list']}"
         if d["fails"]:
-            issues += "\n[bold #c15a5a]services down:[/bold #c15a5a] " + ", ".join(n["label"] for n in d["fails"])
+            issues += "\n[bold #e2534f]services down:[/bold #e2534f] " + ", ".join(n["label"] for n in d["fails"])
         if d["unhealthy"]:
-            issues += "\n[bold #c15a5a]unhealthy containers:[/bold #c15a5a] " + ", ".join(d["unhealthy"])
+            issues += "\n[bold #e2534f]unhealthy containers:[/bold #e2534f] " + ", ".join(d["unhealthy"])
         if total_updates:
-            issues += f"\n[bold #d1a94a]{total_updates} package/image updates pending[/bold #d1a94a] — see Updates (7)"
+            issues += f"\n[bold #e8b64c]{total_updates} package/image updates pending[/bold #e8b64c] — see Updates (7)"
         if reclaim_bits:
             issues += "\n[dim]docker reclaimable: " + ", ".join(reclaim_bits) + " — r on Containers won't clear this, run docker system prune[/dim]"
         if not d["fails"] and not d["unhealthy"] and not d["issue_list"] and not total_updates:
@@ -487,9 +629,9 @@ class HomePane(Vertical):
         if d["newest_feed"]:
             age_min = int((datetime.now().timestamp() - d["newest_mtime"]) / 60)
             age = f"{age_min}m ago" if age_min < 60 else f"{age_min // 60}h ago"
-            feed_text = f"[bold]LATEST FEED:[/bold] {d['newest_feed']} · {age}\n[dim]{d['newest_preview']}[/dim]"
+            feed_text = f"[bold]{d['newest_feed']}[/bold] · {age}\n[dim]{d['newest_preview']}[/dim]"
         else:
-            feed_text = "[bold]LATEST FEED:[/bold]\n[dim]no feed files found[/dim]"
+            feed_text = "[dim]no feed files found[/dim]"
         self.query_one("#home-feed", Static).update(feed_text)
 
 
@@ -527,7 +669,7 @@ class ContainersPane(Vertical):
         self._rows = []
         for c in sorted(containers, key=lambda c: (not c["up"], c["name"])):
             state = "FAIL" if (c["up"] and c["unhealthy"]) else ("OK" if c["up"] else "DOWN")
-            style = STATUS_STYLE.get(state, "#c15a5a" if state == "DOWN" else "")
+            style = STATUS_STYLE.get(state, "#e2534f" if state == "DOWN" else "")
             cpu, mem = stats.get(c["name"], ("-", "-"))
             table.add_row(
                 f"[{style}]{state}[/{style}]" if style else state,
@@ -603,9 +745,9 @@ class AccessPane(Vertical):
             return
         n = self._rows[table.cursor_row]
         if n["kind"] == "public_route":
-            text = f"[bold #c9932f]{n['meta'].get('url', '')}[/bold #c9932f]"
+            text = f"[bold #3ad6d6]{n['meta'].get('url', '')}[/bold #3ad6d6]"
         else:
-            text = f"[bold #c9932f]{n['label']}[/bold #c9932f]  [dim](internal container — not exposed via a tunnel route)[/dim]"
+            text = f"[bold #3ad6d6]{n['label']}[/bold #3ad6d6]  [dim](internal container — not exposed via a tunnel route)[/dim]"
         self.query_one("#access-url", Static).update(text)
 
 
@@ -637,7 +779,7 @@ class AgentsPane(Horizontal):
         table.clear()
         self._rows = rows
         for job, state, last in rows:
-            style = "#6fae6f" if state == "active" else ("dim" if state in ("inactive", "dead") else "#c9932f")
+            style = "#3ad6d6" if state == "active" else ("dim" if state in ("inactive", "dead") else "#3ad6d6")
             table.add_row(job, f"[{style}]{state}[/{style}]", last)
 
     def selected_job(self):
@@ -775,7 +917,7 @@ class UpdatesPane(Vertical):
         total = len(d["apt"]) + len(d["npm"]) + len(d["pip"]) + len(d["images"])
         summary = f"[bold]{total} updates pending[/bold]  ·  apt {len(d['apt'])}  npm {len(d['npm'])}  pip {len(d['pip'])}  docker images {len(d['images'])}\n"
         summary += f"disk-cleanup.timer last ran: {d['cleanup_last'] or 'unknown'}\n"
-        summary += ("[bold #d1a94a]docker reclaimable: " + ", ".join(reclaim_bits) + "[/bold #d1a94a]"
+        summary += ("[bold #e8b64c]docker reclaimable: " + ", ".join(reclaim_bits) + "[/bold #e8b64c]"
                     if reclaim_bits else "[dim]nothing reclaimable in docker[/dim]")
         self.query_one("#updates-summary", Static).update(summary)
 
@@ -872,37 +1014,46 @@ class JarvisApp(App):
 
     #home-loading { height: 3; }
     #dashboard-grid {
-        layout: grid; grid-size: 4 5; grid-gutter: 1 1;
-        grid-rows: 7 7 7 1fr 1fr; padding: 0 1;
+        layout: grid; grid-size: 4 6; grid-gutter: 1 1;
+        grid-rows: 7 7 7 6 1fr 1fr; padding: 0 1;
     }
     .stat-tile {
-        background: $surface; border: solid $panel; padding: 0 1;
-        height: 100%;
+        background: $surface; border: round $panel; padding: 0 1;
+        height: 100%; border-title-color: $primary; border-title-style: bold;
     }
-    .stat-label { color: $text-muted; text-style: bold; }
+    .stat-tile.stat-border-ok { border: round $success; }
+    .stat-tile.stat-border-warn { border: round $warning; }
+    .stat-tile.stat-border-fail { border: round $error; }
+    .stat-tile.stat-border-neutral { border: round $panel; }
     .stat-value { text-style: bold; height: 1fr; content-align: left middle; }
     .stat-value.stat-ok { color: $success; }
     .stat-value.stat-warn { color: $warning; }
     .stat-value.stat-fail { color: $error; }
     .stat-value.stat-neutral { color: $primary; }
     .stat-sub { color: $text-muted; }
-    #tile-cpu Sparkline { height: 1fr; }
+    Graph { height: 1fr; }
     .panel {
-        background: $surface; border: solid $panel; padding: 1;
-        column-span: 2;
+        background: $surface; border: round $panel; padding: 1;
+        column-span: 2; border-title-color: $primary; border-title-style: bold;
     }
     .panel.wide { column-span: 4; height: 1fr; }
+    #home-cores { height: 100%; column-span: 3; }
+    #home-procs { height: 1fr; }
+    #home-issues { height: 1fr; }
     DataTable { height: 1fr; }
     DataTable > .datatable--cursor { background: $boost; }
     #ops-buttons { height: 3; }
-    #ask-log, #ops-log { height: 1fr; border: solid $panel; }
+    #ask-log, #ops-log { height: 1fr; border: round $panel; }
     #agents-left { width: 45%; }
-    #agents-log { width: 55%; border: solid $panel; }
+    #agents-log { width: 55%; border: round $panel; }
     #feeds-left { width: 28; }
     #feeds-right { width: 1fr; padding: 0 2; }
     #feeds-list { height: 1fr; }
     #containers-hint, #access-hint, #agents-hint { color: $text-muted; padding: 0 1; }
-    #updates-summary { height: auto; padding: 1; background: $surface; border: solid $panel; margin-bottom: 1; }
+    #updates-summary {
+        height: auto; padding: 1; background: $surface; border: round $panel;
+        margin-bottom: 1;
+    }
     #access-url { padding: 1; color: $primary; }
     """
 
