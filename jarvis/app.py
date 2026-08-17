@@ -355,12 +355,14 @@ class CoreMeter(Static):
         text = Text()
         for i, pct in enumerate(pcts):
             filled = round(pct / 100 * 6)
-            bar = "█" * filled + "░" * (6 - filled)
             color = _hex_lerp("#3ad6d6", "#f06868", pct / 100)
             if i:
                 text.append("  ")
             text.append(f"C{i}", style="dim")
-            text.append(f" {bar} ", style=color)
+            text.append(" ")
+            text.append("█" * filled, style=color)
+            text.append("░" * (6 - filled), style="dim")
+            text.append(" ")
             text.append(f"{pct:>3.0f}%", style=color)
         self.update(text)
 
@@ -990,7 +992,7 @@ class JarvisApp(App):
         width: 24; background: $surface; border-right: solid $panel;
         padding: 1 0;
     }
-    #sidebar ListView { background: $surface; }
+    #sidebar ListView { background: $surface; scrollbar-size: 0 0; }
     #sidebar ListItem {
         padding: 0 2; height: 3; content-align: left middle;
         border-left: thick $surface;
@@ -1040,7 +1042,7 @@ class JarvisApp(App):
     #home-cores { height: 100%; column-span: 3; }
     #home-procs { height: 1fr; }
     #home-issues { height: 1fr; }
-    DataTable { height: 1fr; }
+    DataTable { height: 1fr; scrollbar-size: 1 1; scrollbar-color: $panel; scrollbar-color-hover: $primary; scrollbar-color-active: $primary; }
     DataTable > .datatable--cursor { background: $boost; }
     #ops-buttons { height: 3; }
     #ask-log, #ops-log { height: 1fr; border: round $panel; }
