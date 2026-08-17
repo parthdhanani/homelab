@@ -146,7 +146,10 @@ def _cached(key: str, fn):
 def _apt_upgradable() -> list:
     def fetch():
         out = _run(["apt", "list", "--upgradable"], timeout=15)
-        return [ln.split("/")[0] for ln in out.splitlines() if ln and not ln.startswith("Listing")]
+        return [
+            ln.split("/")[0] for ln in out.splitlines()
+            if ln and not ln.startswith("Listing") and not ln.startswith("WARNING")
+        ]
     return _cached("apt", fetch)
 
 
@@ -1042,7 +1045,12 @@ class JarvisApp(App):
     #home-cores { height: 100%; column-span: 3; }
     #home-procs { height: 1fr; }
     #home-issues { height: 1fr; }
-    DataTable { height: 1fr; scrollbar-size: 1 1; scrollbar-color: $panel; scrollbar-color-hover: $primary; scrollbar-color-active: $primary; }
+    DataTable, Log {
+        scrollbar-size: 1 1; scrollbar-background: $surface; scrollbar-background-hover: $surface;
+        scrollbar-background-active: $surface; scrollbar-color: $panel-lighten-1;
+        scrollbar-color-hover: $primary; scrollbar-color-active: $primary; scrollbar-corner-color: $surface;
+    }
+    DataTable { height: 1fr; }
     DataTable > .datatable--cursor { background: $boost; }
     #ops-buttons { height: 3; }
     #ask-log, #ops-log { height: 1fr; border: round $panel; }
