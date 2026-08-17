@@ -6,9 +6,11 @@ Sidebar-navigated, live by default (auto-refreshes every 15s), reuses `graph-ser
 
 Styled with a real Textual `Theme` (design tokens, not scattered hex) matching the graph-viz instrument-panel palette — brass accent on warm graphite. Tables use zebra striping for row-scannability; the sidebar's active section gets an accent-colored left border, not just a background tint; data loads show a spinner instead of a static "loading…" label until real content lands.
 
+Home is a fixed **grid dashboard** (btop/wtfutil pattern), not a scrolling status dump — 7 color-coded stat tiles (services, containers, disk, memory, agents, backup-drill freshness, health-check pass/warn/fail) plus a live CPU sparkline, an issues panel, and a latest-feed preview, all visible on screen at once. Tiles go green/amber/red by real threshold (disk ≥85% fail, ≥70% warn; mem ≥90%/≥75%; backup drill stale after 2/7 days), so a problem is visible without navigating anywhere.
+
 ## Sections (sidebar, number keys 1-8)
 
-- **1 Home** — daily-report verdict, services OK/FAIL summary, agents-running count, then the full `cryptex-status.sh` dump
+- **1 Home** — glanceable grid dashboard: 7 stat tiles + CPU sparkline + issues + latest feed, all at once
 - **2 Containers** — all 16 containers with live `docker stats` (cpu/mem), uptime, ports. `a` start · `x` stop · `z` restart — each behind a confirm prompt
 - **3 Access** — every service on the box, public or not, one table: 15 public routes (status, gated/public, real URL on select) plus 12 internal-only containers (status, image, ports) that never had a home before
 - **4 Agents** — the 13 `claude-agent@*` scheduled jobs; select a row for its live log tail (last 200 lines) in the split pane; `s` runs one now (confirmed)

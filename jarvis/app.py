@@ -26,7 +26,7 @@ from textual.screen import ModalScreen
 from textual.theme import Theme
 from textual.widgets import (
     Header, Footer, Static, Input, Log, Button, ListView, ListItem, Label,
-    Markdown, DataTable, ContentSwitcher, Rule, LoadingIndicator,
+    Markdown, DataTable, ContentSwitcher, Rule, LoadingIndicator, Sparkline,
 )
 
 # A real design-token theme (Textual's Theme system — same mechanism behind
@@ -162,71 +162,231 @@ class Activity(Static):
 
 # ── Panes ────────────────────────────────────────────────────────────────
 
+class StatTile(Vertical):
+    """One glanceable metric: label, big value, one-line sub-detail — all
+    colored by status. The unit of the Home grid (btop/wtfutil-style: many
+    of these tiled on screen at once beats one long scrolling status dump)."""
+
+    def __init__(self, label: str, tile_id: str):
+        super().__init__(id=tile_id, classes="stat-tile")
+        self.label_text = label
+
+    def compose(self) -> ComposeResult:
+        yield Static(self.label_text, classes="stat-label")
+        yield Static("—", classes="stat-value", id=f"{self.id}-value")
+        yield Static("", classes="stat-sub", id=f"{self.id}-sub")
+
+    def set_value(self, value: str, sub: str = "", status: str = "neutral") -> None:
+        v = self.query_one(f"#{self.id}-value", Static)
+        v.update(value)
+        v.set_classes(f"stat-value stat-{status}")
+        self.query_one(f"#{self.id}-sub", Static).update(sub)
+
+
+class SparkTile(Vertical):
+    """Stat tile backed by a live trend line instead of a static number —
+    history persists across refreshes for the life of the app."""
+
+    def __init__(self, label: str, tile_id: str):
+        super().__init__(id=tile_id, classes="stat-tile")
+        self.label_text = label
+        self.history: list = []
+
+    def compose(self) -> ComposeResult:
+        yield Static(self.label_text, classes="stat-label")
+        # Sparkline colors each bar by its value's position within the
+        # *current window's own* min/max — a flat-low series still paints
+        # solid max_color. Pin both ends to the same accent so the shape
+        # of the trend carries the signal, not a misleading per-bar tint.
+        yield Sparkline([], id=f"{self.id}-spark", min_color="#c9932f", max_color="#c9932f")
+        yield Static("", classes="stat-sub", id=f"{self.id}-sub")
+
+    def push(self, value: float, sub: str = "") -> None:
+        self.history.append(value)
+        self.history = self.history[-40:]
+        self.query_one(Sparkline).data = self.history
+        self.query_one(f"#{self.id}-sub", Static).update(sub)
+
+
 class HomePane(Vertical):
+    """Everything-at-a-glance: a fixed grid of live tiles, always all
+    visible — no drilling into a status dump to find the one bad number."""
+
     def compose(self) -> ComposeResult:
         yield LoadingIndicator(id="home-loading")
-        yield Static("", id="home-body")
+        with Container(id="dashboard-grid"):
+            yield StatTile("SERVICES", "tile-services")
+            yield StatTile("CONTAINERS", "tile-containers")
+            yield StatTile("DISK", "tile-disk")
+            yield StatTile("MEMORY", "tile-memory")
+            yield StatTile("AGENTS", "tile-agents")
+            yield StatTile("BACKUP", "tile-backup")
+            yield StatTile("HEALTH CHECK", "tile-health")
+            yield SparkTile("CONTAINER CPU", "tile-cpu")
+            yield Static("", id="home-issues", classes="panel wide")
+            yield Static("", id="home-feed", classes="panel wide")
 
     def on_mount(self) -> None:
-        self.query_one("#home-body", Static).display = False
+        self.query_one("#dashboard-grid").display = False
         self.refresh_data()
 
     def refresh_data(self) -> None:
         self.run_worker(self._load, thread=True, exclusive=True)
 
     def _load(self) -> None:
-        text = f"[dim]refreshed {datetime.now().strftime('%H:%M:%S')} — r to refresh[/dim]\n\n"
+        d: dict = {"now": datetime.now().strftime("%H:%M:%S")}
 
+        daily = {}
         if os.path.exists(DAILY_REPORT):
             try:
                 with open(DAILY_REPORT) as fh:
-                    d = json.load(fh)
-                verdict = d.get("verdict")
-                vstyle = "bold #6fae6f" if verdict == "OK" else "bold #c15a5a"
-                text += f"[bold #c9932f]DAILY VERDICT[/bold #c9932f]  [{vstyle}]{verdict}[/{vstyle}]"
-                if d.get("issue_list"):
-                    text += f"   [dim]{d['issue_list']}[/dim]"
-                text += f"   [dim]({d.get('date','?')})[/dim]\n\n"
-                sysd = d.get("system", {})
-                text += (f"  disk {sysd.get('disk_human','?')}    "
-                         f"mem free {sysd.get('mem_free_mb','?')}MB / {sysd.get('mem_total_mb','?')}MB    "
-                         f"containers {sysd.get('containers_running','?')} up\n\n")
+                    daily = json.load(fh)
             except (json.JSONDecodeError, OSError):
-                pass
+                daily = {}
+        d["verdict"] = daily.get("verdict", "?")
+        d["issue_list"] = daily.get("issue_list", "")
+        d["hc"] = daily.get("health_check", {})
 
         try:
-            svc = gs.cluster_services()
-            fails = [n for n in svc["nodes"] if n["meta"].get("status") == "FAIL"]
-            ok = sum(1 for n in svc["nodes"] if n["meta"].get("status") == "OK")
-            text += f"[bold #c9932f]SERVICES[/bold #c9932f]  [bold #6fae6f]{ok} OK[/bold #6fae6f]"
-            if fails:
-                text += f"  [bold #c15a5a]{len(fails)} FAILING: " + ", ".join(n["label"] for n in fails) + "[/bold #c15a5a]"
-            text += f"  ·  {len(svc['nodes'])} total\n\n"
+            nodes = gs.cluster_services()["nodes"]
+            d["fails"] = [n for n in nodes if n["meta"].get("status") == "FAIL"]
+            d["ok"] = sum(1 for n in nodes if n["meta"].get("status") == "OK")
+            d["total"] = len(nodes)
         except Exception:  # noqa: BLE001
-            pass
+            d["fails"], d["ok"], d["total"] = [], 0, 0
 
-        active_jobs = 0
-        for job in gs.CLAUDE_AGENT_JOBS:
-            if gs._job_status(job).get("active_state") == "active":
-                active_jobs += 1
-        text += f"[bold #c9932f]AGENTS[/bold #c9932f]  {len(gs.CLAUDE_AGENT_JOBS)} scheduled, {active_jobs} running now\n\n"
+        containers = _docker_ps_full()
+        d["up"] = sum(1 for c in containers if c["up"])
+        d["container_total"] = len(containers)
+        d["unhealthy"] = [c["name"] for c in containers if c["up"] and c["unhealthy"]]
 
-        out = _run(["bash", STATUS_SCRIPT], timeout=20)
-        text += "[bold #c9932f]== cryptex-status ==[/bold #c9932f]\n"
-        for line in out.splitlines():
-            if line.startswith("!!"):
-                text += f"[bold #c15a5a]{line}[/bold #c15a5a]\n"
-            elif line.startswith("=="):
-                text += f"\n[bold #c9932f]{line}[/bold #c9932f]\n"
-            else:
-                text += f"{line}\n"
-        self.app.call_from_thread(self._set, text)
+        sysd = daily.get("system", {})
+        d["disk_pct"] = sysd.get("disk_pct", 0)
+        d["disk_human"] = sysd.get("disk_human", "?")
+        mem_free = sysd.get("mem_free_mb", 0)
+        mem_total = sysd.get("mem_total_mb", 0) or 1
+        d["mem_pct"] = 100 - int(mem_free / mem_total * 100)
+        d["mem_free"], d["mem_total"] = mem_free, mem_total
 
-    def _set(self, text: str) -> None:
+        d["active_jobs"] = sum(
+            1 for job in gs.CLAUDE_AGENT_JOBS
+            if gs._job_status(job).get("active_state") == "active"
+        )
+
+        try:
+            with open("/var/log/cryptex-restore-check.log") as fh:
+                lines = fh.readlines()
+            d["backup_line"] = lines[-1].strip() if lines else ""
+        except OSError:
+            d["backup_line"] = ""
+
+        stats_out = _run(["docker", "stats", "--no-stream", "--format", "{{.CPUPerc}}"], timeout=10)
+        total_cpu = 0.0
+        for line in stats_out.splitlines():
+            try:
+                total_cpu += float(line.strip().rstrip("%"))
+            except ValueError:
+                pass
+        d["total_cpu"] = total_cpu
+
+        newest_feed, newest_mtime, newest_preview = None, 0, ""
+        for name, fname in FEEDS.items():
+            path = os.path.join(FEEDS_DIR, fname)
+            try:
+                mtime = os.path.getmtime(path)
+            except OSError:
+                continue
+            if mtime > newest_mtime:
+                newest_mtime = mtime
+                newest_feed = name
+                try:
+                    with open(path, encoding="utf-8", errors="replace") as fh:
+                        section = _latest_section(fh.read())
+                    body_lines = [ln for ln in section.splitlines() if ln.strip() and not ln.startswith("#")]
+                    newest_preview = body_lines[0][:90] if body_lines else ""
+                except OSError:
+                    newest_preview = ""
+        d["newest_feed"], d["newest_mtime"], d["newest_preview"] = newest_feed, newest_mtime, newest_preview
+
+        self.app.call_from_thread(self._set_all, d)
+
+    def _set_all(self, d: dict) -> None:
         self.query_one("#home-loading", LoadingIndicator).display = False
-        body = self.query_one("#home-body", Static)
-        body.display = True
-        body.update(text)
+        grid = self.query_one("#dashboard-grid")
+        grid.display = True
+
+        self.query_one("#tile-services", StatTile).set_value(
+            f"{d['ok']}/{d['total']}",
+            ("FAIL: " + ", ".join(n["label"] for n in d["fails"])) if d["fails"] else "all healthy",
+            "fail" if d["fails"] else "ok",
+        )
+
+        self.query_one("#tile-containers", StatTile).set_value(
+            f"{d['up']}/{d['container_total']}",
+            ("unhealthy: " + ", ".join(d["unhealthy"])) if d["unhealthy"] else "all running",
+            "fail" if d["unhealthy"] else "ok",
+        )
+
+        disk_status = "fail" if d["disk_pct"] >= 85 else ("warn" if d["disk_pct"] >= 70 else "ok")
+        self.query_one("#tile-disk", StatTile).set_value(
+            f"{d['disk_pct']}%", d["disk_human"], disk_status,
+        )
+
+        mem_status = "fail" if d["mem_pct"] >= 90 else ("warn" if d["mem_pct"] >= 75 else "ok")
+        self.query_one("#tile-memory", StatTile).set_value(
+            f"{d['mem_pct']}%", f"{d['mem_free']}MB free / {d['mem_total']}MB", mem_status,
+        )
+
+        self.query_one("#tile-agents", StatTile).set_value(
+            str(len(gs.CLAUDE_AGENT_JOBS)),
+            f"{d['active_jobs']} running now" if d["active_jobs"] else "idle",
+            "warn" if d["active_jobs"] else "neutral",
+        )
+
+        backup_status, backup_value, backup_sub = "neutral", "?", "no drill log"
+        if d["backup_line"]:
+            date_str = d["backup_line"].split(" DRILL ", 1)[0]
+            try:
+                age_days = (datetime.now() - datetime.strptime(date_str, "%Y-%m-%d")).days
+                backup_status = "ok" if age_days < 2 else ("warn" if age_days < 7 else "fail")
+                backup_value = f"{age_days}d ago"
+                backup_sub = "drill passed" if backup_status == "ok" else "drill stale — check"
+            except ValueError:
+                backup_value = "?"
+        self.query_one("#tile-backup", StatTile).set_value(backup_value, backup_sub, backup_status)
+
+        hc = d["hc"]
+        hc_status = "fail" if hc.get("fail") else ("warn" if hc.get("warn") else "ok")
+        self.query_one("#tile-health", StatTile).set_value(
+            f"{hc.get('pass', '?')} pass",
+            f"{hc.get('warn', 0)} warn, {hc.get('fail', 0)} fail" + (
+                f" — {hc['failed_services']}" if hc.get("failed_services") else ""
+            ),
+            hc_status,
+        )
+
+        self.query_one("#tile-cpu", SparkTile).push(
+            d["total_cpu"], f"{d['total_cpu']:.0f}% aggregate across {d['container_total']} containers"
+        )
+
+        issues = f"[bold]VERDICT:[/bold] {d['verdict']}"
+        if d["issue_list"]:
+            issues += f"  —  {d['issue_list']}"
+        if d["fails"]:
+            issues += "\n[bold #c15a5a]services down:[/bold #c15a5a] " + ", ".join(n["label"] for n in d["fails"])
+        if d["unhealthy"]:
+            issues += "\n[bold #c15a5a]unhealthy containers:[/bold #c15a5a] " + ", ".join(d["unhealthy"])
+        if not d["fails"] and not d["unhealthy"] and not d["issue_list"]:
+            issues += "\n[dim]nothing needs attention[/dim]"
+        self.query_one("#home-issues", Static).update(issues)
+
+        if d["newest_feed"]:
+            age_min = int((datetime.now().timestamp() - d["newest_mtime"]) / 60)
+            age = f"{age_min}m ago" if age_min < 60 else f"{age_min // 60}h ago"
+            feed_text = f"[bold]LATEST FEED:[/bold] {d['newest_feed']} · {age}\n[dim]{d['newest_preview']}[/dim]"
+        else:
+            feed_text = "[bold]LATEST FEED:[/bold]\n[dim]no feed files found[/dim]"
+        self.query_one("#home-feed", Static).update(feed_text)
 
 
 class ContainersPane(Vertical):
@@ -551,8 +711,28 @@ class JarvisApp(App):
         border-top: solid $panel;
     }
 
-    #home-body { padding: 0 1; }
     #home-loading { height: 3; }
+    #dashboard-grid {
+        layout: grid; grid-size: 4 4; grid-gutter: 1 1;
+        grid-rows: 7 7 1fr 1fr; padding: 0 1;
+    }
+    .stat-tile {
+        background: $surface; border: solid $panel; padding: 0 1;
+        height: 100%;
+    }
+    .stat-label { color: $text-muted; text-style: bold; }
+    .stat-value { text-style: bold; height: 1fr; content-align: left middle; }
+    .stat-value.stat-ok { color: $success; }
+    .stat-value.stat-warn { color: $warning; }
+    .stat-value.stat-fail { color: $error; }
+    .stat-value.stat-neutral { color: $primary; }
+    .stat-sub { color: $text-muted; }
+    #tile-cpu Sparkline { height: 1fr; }
+    .panel {
+        background: $surface; border: solid $panel; padding: 1;
+        column-span: 2;
+    }
+    .panel.wide { column-span: 4; height: 1fr; }
     DataTable { height: 1fr; }
     DataTable > .datatable--cursor { background: $boost; }
     #ops-buttons { height: 3; }
