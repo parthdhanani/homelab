@@ -23,9 +23,30 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical, Horizontal, VerticalScroll, Container
 from textual.screen import ModalScreen
+from textual.theme import Theme
 from textual.widgets import (
     Header, Footer, Static, Input, Log, Button, ListView, ListItem, Label,
-    Markdown, DataTable, ContentSwitcher, Rule,
+    Markdown, DataTable, ContentSwitcher, Rule, LoadingIndicator,
+)
+
+# A real design-token theme (Textual's Theme system — same mechanism behind
+# its builtin "nord"/"gruvbox" themes) instead of hex scattered through the
+# stylesheet. One source of truth for every color; CSS below only ever
+# references the $tokens.
+JARVIS_THEME = Theme(
+    name="jarvis",
+    dark=True,
+    primary="#c9932f",       # brass — accent, focus, active nav
+    secondary="#8a7550",
+    accent="#c9932f",
+    warning="#d1a94a",
+    error="#c15a5a",
+    success="#6fae6f",
+    foreground="#e8e0d0",
+    background="#17140f",
+    surface="#1d1912",
+    panel="#221d15",
+    boost="#2a241a",
 )
 
 STATUS_SCRIPT = "/opt/cryptex/scripts/cryptex-status.sh"
@@ -50,25 +71,20 @@ FEEDS = {
 
 STATUS_STYLE = {
     "OK": "bold #6fae6f", "FAIL": "bold #c15a5a",
-    "DISABLED": "dim", "UNKNOWN": "#c9932f",
+    "DISABLED": "dim", "UNKNOWN": "bold #d1a94a",
 }
 
+# key -> (number, glyph, label). Plain box-drawing glyphs only — no nerd-font
+# dependency, so this renders identically over any SSH client / terminal.
 NAV_ITEMS = [
-    ("home", "󰋜  Home"),
-    ("containers", "󰡨  Containers"),
-    ("access", "󰖟  Access"),
-    ("agents", "󰚩  Agents"),
-    ("feeds", "󰑫  Feeds"),
-    ("crons", "󰃰  Crons"),
-    ("ask", "󰭹  Ask"),
-    ("ops", "󰒓  Ops"),
-]
-# Fallback glyphs (nerd-font icons above may not render in every terminal) —
-# ContentSwitcher keys stay ASCII regardless; only the label text changes.
-NAV_ITEMS_PLAIN = [
-    ("home", "Home"), ("containers", "Containers"), ("access", "Access"),
-    ("agents", "Agents"), ("feeds", "Feeds"), ("crons", "Crons"),
-    ("ask", "Ask"), ("ops", "Ops"),
+    ("home", "1", "●", "Home"),
+    ("containers", "2", "▣", "Containers"),
+    ("access", "3", "◈", "Access"),
+    ("agents", "4", "◆", "Agents"),
+    ("feeds", "5", "▤", "Feeds"),
+    ("crons", "6", "◷", "Crons"),
+    ("ask", "7", "?", "Ask"),
+    ("ops", "8", "⚙", "Ops"),
 ]
 
 
@@ -113,8 +129,8 @@ class ConfirmModal(ModalScreen):
     CSS = """
     ConfirmModal { align: center middle; }
     #confirm-box {
-        width: 60; height: auto; padding: 1 2; background: #262019;
-        border: solid #c9932f;
+        width: 60; height: auto; padding: 1 2; background: $panel;
+        border: solid $primary;
     }
     #confirm-msg { padding: 1 0; }
     #confirm-buttons { height: 3; align: right middle; }
@@ -148,9 +164,11 @@ class Activity(Static):
 
 class HomePane(Vertical):
     def compose(self) -> ComposeResult:
-        yield Static("loading…", id="home-body")
+        yield LoadingIndicator(id="home-loading")
+        yield Static("", id="home-body")
 
     def on_mount(self) -> None:
+        self.query_one("#home-body", Static).display = False
         self.refresh_data()
 
     def refresh_data(self) -> None:
@@ -205,14 +223,17 @@ class HomePane(Vertical):
         self.app.call_from_thread(self._set, text)
 
     def _set(self, text: str) -> None:
-        self.query_one("#home-body", Static).update(text)
+        self.query_one("#home-loading", LoadingIndicator).display = False
+        body = self.query_one("#home-body", Static)
+        body.display = True
+        body.update(text)
 
 
 class ContainersPane(Vertical):
     """Full docker control: every container, live stats, start/stop/restart."""
 
     def compose(self) -> ComposeResult:
-        yield DataTable(id="containers-table")
+        yield DataTable(id="containers-table", zebra_stripes=True)
         yield Static("", id="containers-hint")
 
     def on_mount(self) -> None:
@@ -267,7 +288,7 @@ class AccessPane(Vertical):
     their real URL; internal-only containers show their bound ports."""
 
     def compose(self) -> ComposeResult:
-        yield DataTable(id="access-table")
+        yield DataTable(id="access-table", zebra_stripes=True)
         yield Static("[dim]enter/click a row — public routes print their URL below; internal containers print their ports[/dim]", id="access-hint")
         yield Static("", id="access-url")
 
@@ -327,7 +348,7 @@ class AccessPane(Vertical):
 class AgentsPane(Horizontal):
     def compose(self) -> ComposeResult:
         with Vertical(id="agents-left"):
-            yield DataTable(id="agents-table")
+            yield DataTable(id="agents-table", zebra_stripes=True)
             yield Static("s=run now  enter=view log  r=refresh", id="agents-hint")
         yield Log(id="agents-log", highlight=True)
 
@@ -417,7 +438,7 @@ class FeedsPane(Horizontal):
 
 class CronsPane(Vertical):
     def compose(self) -> ComposeResult:
-        yield DataTable(id="crons-table")
+        yield DataTable(id="crons-table", zebra_stripes=True)
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
@@ -502,36 +523,47 @@ class OpsPane(Vertical):
 
 class JarvisApp(App):
     CSS = """
-    Screen { background: #1b1815; layout: horizontal; }
+    Screen { background: $background; layout: horizontal; }
 
     #sidebar {
-        width: 22; background: #201b16; border-right: solid #3a342c;
+        width: 24; background: $surface; border-right: solid $panel;
         padding: 1 0;
     }
-    #sidebar ListView { background: #201b16; }
-    #sidebar ListItem { padding: 0 2; height: 3; content-align: left middle; }
-    #sidebar ListItem.-highlight { background: #2c2620; }
-    #sidebar Label { color: #b8ac97; }
-    #brand { padding: 1 2 2 2; color: #c9932f; text-style: bold; }
+    #sidebar ListView { background: $surface; }
+    #sidebar ListItem {
+        padding: 0 2; height: 3; content-align: left middle;
+        border-left: thick $surface;
+    }
+    #sidebar ListItem.-highlight {
+        background: $boost; border-left: thick $primary;
+    }
+    #sidebar Label { color: $text-muted; }
+    #sidebar ListItem.-highlight Label { color: $text; text-style: bold; }
+    #brand {
+        padding: 1 2 2 2; color: $primary; text-style: bold;
+        border-bottom: solid $panel; margin-bottom: 1;
+    }
 
     #main { width: 1fr; }
     #main-content { height: 1fr; padding: 1 2; }
     #activity-bar {
-        height: 1; background: #201b16; color: #7a7260; padding: 0 2;
-        border-top: solid #3a342c;
+        height: 1; background: $surface; color: $text-muted; padding: 0 2;
+        border-top: solid $panel;
     }
 
     #home-body { padding: 0 1; }
+    #home-loading { height: 3; }
     DataTable { height: 1fr; }
+    DataTable > .datatable--cursor { background: $boost; }
     #ops-buttons { height: 3; }
-    #ask-log, #ops-log { height: 1fr; border: solid #3a342c; }
+    #ask-log, #ops-log { height: 1fr; border: solid $panel; }
     #agents-left { width: 45%; }
-    #agents-log { width: 55%; border: solid #3a342c; }
+    #agents-log { width: 55%; border: solid $panel; }
     #feeds-left { width: 28; }
     #feeds-right { width: 1fr; padding: 0 2; }
     #feeds-list { height: 1fr; }
-    #containers-hint, #access-hint, #agents-hint { color: #7a7260; padding: 0 1; }
-    #access-url { padding: 1; color: #c9932f; }
+    #containers-hint, #access-hint, #agents-hint { color: $text-muted; padding: 0 1; }
+    #access-url { padding: 1; color: $primary; }
     """
 
     BINDINGS = [
@@ -562,7 +594,8 @@ class JarvisApp(App):
             with Vertical(id="sidebar"):
                 yield Static("JARVIS", id="brand")
                 yield ListView(
-                    *[ListItem(Label(label), id=f"nav-{key}") for key, label in NAV_ITEMS_PLAIN],
+                    *[ListItem(Label(f"{glyph}  {num}  {label}"), id=f"nav-{key}")
+                      for key, num, glyph, label in NAV_ITEMS],
                     id="nav",
                 )
             with Vertical(id="main"):
@@ -579,6 +612,8 @@ class JarvisApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
+        self.register_theme(JARVIS_THEME)
+        self.theme = "jarvis"
         self._refresh_timer = self.set_interval(self.AUTO_REFRESH_SECS, self._auto_refresh)
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
@@ -589,7 +624,7 @@ class JarvisApp(App):
     def action_goto(self, key: str) -> None:
         self.query_one(ContentSwitcher).current = key
         nav = self.query_one("#nav", ListView)
-        for i, (k, _) in enumerate(NAV_ITEMS_PLAIN):
+        for i, (k, *_rest) in enumerate(NAV_ITEMS):
             if k == key:
                 nav.index = i
 

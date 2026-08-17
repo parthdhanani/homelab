@@ -4,6 +4,8 @@ The cryptex control panel, in a terminal. Run: `jarvis` (installed at `/usr/loca
 
 Sidebar-navigated, live by default (auto-refreshes every 15s), reuses `graph-server/graph_server.py`'s cluster loaders directly — same live truth the graph.psidex.com dashboard shows, no second data source to drift out of sync.
 
+Styled with a real Textual `Theme` (design tokens, not scattered hex) matching the graph-viz instrument-panel palette — brass accent on warm graphite. Tables use zebra striping for row-scannability; the sidebar's active section gets an accent-colored left border, not just a background tint; data loads show a spinner instead of a static "loading…" label until real content lands.
+
 ## Sections (sidebar, number keys 1-8)
 
 - **1 Home** — daily-report verdict, services OK/FAIL summary, agents-running count, then the full `cryptex-status.sh` dump
