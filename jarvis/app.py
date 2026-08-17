@@ -16,6 +16,8 @@ import subprocess
 import sys
 from datetime import datetime
 
+import psutil
+
 sys.path.insert(0, "/opt/cryptex/graph-server")
 import graph_server as gs  # noqa: E402
 
@@ -83,8 +85,9 @@ NAV_ITEMS = [
     ("agents", "4", "◆", "Agents"),
     ("feeds", "5", "▤", "Feeds"),
     ("crons", "6", "◷", "Crons"),
-    ("ask", "7", "?", "Ask"),
-    ("ops", "8", "⚙", "Ops"),
+    ("updates", "7", "↑", "Updates"),
+    ("ask", "8", "?", "Ask"),
+    ("ops", "9", "⚙", "Ops"),
 ]
 
 
@@ -103,6 +106,73 @@ def _latest_section(text: str) -> str:
     if len(parts) <= 1:
         return text.strip()
     return ("## " + parts[-1]).strip()
+
+
+# apt/npm/pip outdated-package checks are slow (pip alone ~8s) and don't
+# change minute-to-minute — cache for 5 min so the 15s Home auto-refresh
+# doesn't repeatedly pay that cost.
+_UPDATE_CACHE_TTL = 300
+_update_cache: dict = {}
+
+
+def _cached(key: str, fn):
+    entry = _update_cache.get(key)
+    now = datetime.now().timestamp()
+    if entry and now - entry[0] < _UPDATE_CACHE_TTL:
+        return entry[1]
+    value = fn()
+    _update_cache[key] = (now, value)
+    return value
+
+
+def _apt_upgradable() -> list:
+    def fetch():
+        out = _run(["apt", "list", "--upgradable"], timeout=15)
+        return [ln.split("/")[0] for ln in out.splitlines() if ln and not ln.startswith("Listing")]
+    return _cached("apt", fetch)
+
+
+def _npm_outdated() -> list:
+    def fetch():
+        out = _run(["npm", "outdated", "-g"], timeout=15)
+        rows = []
+        for ln in out.splitlines()[1:]:
+            parts = ln.split()
+            if len(parts) >= 4:
+                rows.append({"name": parts[0], "current": parts[1], "latest": parts[3]})
+        return rows
+    return _cached("npm", fetch)
+
+
+def _pip_outdated() -> list:
+    def fetch():
+        out = _run(["pip", "list", "--outdated", "--format=json"], timeout=20)
+        try:
+            data = json.loads(out)
+        except (json.JSONDecodeError, ValueError):
+            return []
+        return [{"name": d["name"], "current": d["version"], "latest": d["latest_version"]} for d in data]
+    return _cached("pip", fetch)
+
+
+def _docker_image_updates() -> list:
+    """Dockhand writes 'update available' lines to its own log when it finds
+    one — cheap to tail, no separate polling needed."""
+    out = _run(["docker", "logs", "cryptex-dockhand", "--tail", "200"], timeout=10)
+    lines = [ln for ln in out.splitlines() if "update available" in ln.lower() or "newer image" in ln.lower()]
+    return lines[-10:]
+
+
+def _docker_reclaimable() -> dict:
+    out = _run(["docker", "system", "df", "--format", "{{json .}}"], timeout=15)
+    result = {}
+    for ln in out.splitlines():
+        try:
+            d = json.loads(ln)
+        except json.JSONDecodeError:
+            continue
+        result[d.get("Type", "?")] = d.get("Reclaimable", "?")
+    return result
 
 
 def _docker_ps_full() -> list:
@@ -222,7 +292,11 @@ class HomePane(Vertical):
             yield StatTile("AGENTS", "tile-agents")
             yield StatTile("BACKUP", "tile-backup")
             yield StatTile("HEALTH CHECK", "tile-health")
-            yield SparkTile("CONTAINER CPU", "tile-cpu")
+            yield StatTile("UPDATES", "tile-updates")
+            yield SparkTile("HOST CPU", "tile-host-cpu")
+            yield SparkTile("HOST MEM", "tile-host-mem")
+            yield SparkTile("LOAD (1m)", "tile-load")
+            yield StatTile("RECLAIMABLE", "tile-reclaim")
             yield Static("", id="home-issues", classes="panel wide")
             yield Static("", id="home-feed", classes="panel wide")
 
@@ -280,14 +354,20 @@ class HomePane(Vertical):
         except OSError:
             d["backup_line"] = ""
 
-        stats_out = _run(["docker", "stats", "--no-stream", "--format", "{{.CPUPerc}}"], timeout=10)
-        total_cpu = 0.0
-        for line in stats_out.splitlines():
-            try:
-                total_cpu += float(line.strip().rstrip("%"))
-            except ValueError:
-                pass
-        d["total_cpu"] = total_cpu
+        cleanup_out = _run(["systemctl", "show", "disk-cleanup.timer",
+                             "--property=LastTriggerUSec"], timeout=5)
+        d["cleanup_last"] = cleanup_out.strip().split("=", 1)[-1] if "=" in cleanup_out else ""
+
+        d["host_cpu"] = psutil.cpu_percent(interval=0.5)
+        vm = psutil.virtual_memory()
+        d["host_mem"] = vm.percent
+        d["load1"], d["load5"], d["load15"] = os.getloadavg()
+
+        d["apt_pkgs"] = _apt_upgradable()
+        d["npm_pkgs"] = _npm_outdated()
+        d["pip_pkgs"] = _pip_outdated()
+        d["docker_updates"] = _docker_image_updates()
+        d["reclaimable"] = _docker_reclaimable()
 
         newest_feed, newest_mtime, newest_preview = None, 0, ""
         for name, fname in FEEDS.items():
@@ -365,8 +445,28 @@ class HomePane(Vertical):
             hc_status,
         )
 
-        self.query_one("#tile-cpu", SparkTile).push(
-            d["total_cpu"], f"{d['total_cpu']:.0f}% aggregate across {d['container_total']} containers"
+        self.query_one("#tile-host-cpu", SparkTile).push(d["host_cpu"], f"{d['host_cpu']:.0f}% of {psutil.cpu_count()} cores")
+        self.query_one("#tile-host-mem", SparkTile).push(d["host_mem"], f"{d['host_mem']:.0f}% used")
+        load_status = "fail" if d["load1"] >= psutil.cpu_count() * 2 else ("warn" if d["load1"] >= psutil.cpu_count() else "ok")
+        self.query_one("#tile-load", SparkTile).push(d["load1"], f"{d['load1']:.2f} / {d['load5']:.2f} / {d['load15']:.2f}")
+
+        total_updates = len(d["apt_pkgs"]) + len(d["npm_pkgs"]) + len(d["pip_pkgs"]) + len(d["docker_updates"])
+        upd_status = "warn" if total_updates else "ok"
+        self.query_one("#tile-updates", StatTile).set_value(
+            str(total_updates),
+            f"apt {len(d['apt_pkgs'])} · npm {len(d['npm_pkgs'])} · pip {len(d['pip_pkgs'])} · images {len(d['docker_updates'])}",
+            upd_status,
+        )
+
+        reclaim = d["reclaimable"]
+        reclaim_bits = [
+            f"{k} {v}" for k, v in reclaim.items()
+            if v and not v.endswith("(0%)") and v != "0B"
+        ]
+        self.query_one("#tile-reclaim", StatTile).set_value(
+            reclaim.get("Images", "?"),
+            ", ".join(reclaim_bits) if reclaim_bits else "nothing to reclaim",
+            "warn" if reclaim_bits else "ok",
         )
 
         issues = f"[bold]VERDICT:[/bold] {d['verdict']}"
@@ -376,7 +476,11 @@ class HomePane(Vertical):
             issues += "\n[bold #c15a5a]services down:[/bold #c15a5a] " + ", ".join(n["label"] for n in d["fails"])
         if d["unhealthy"]:
             issues += "\n[bold #c15a5a]unhealthy containers:[/bold #c15a5a] " + ", ".join(d["unhealthy"])
-        if not d["fails"] and not d["unhealthy"] and not d["issue_list"]:
+        if total_updates:
+            issues += f"\n[bold #d1a94a]{total_updates} package/image updates pending[/bold #d1a94a] — see Updates (7)"
+        if reclaim_bits:
+            issues += "\n[dim]docker reclaimable: " + ", ".join(reclaim_bits) + " — r on Containers won't clear this, run docker system prune[/dim]"
+        if not d["fails"] and not d["unhealthy"] and not d["issue_list"] and not total_updates:
             issues += "\n[dim]nothing needs attention[/dim]"
         self.query_one("#home-issues", Static).update(issues)
 
@@ -621,6 +725,61 @@ class CronsPane(Vertical):
             table.add_row(n["label"], n["kind"], detail)
 
 
+class UpdatesPane(Vertical):
+    """apt/npm/pip/docker-image outdated packages, disk-cleanup timer status,
+    and reclaimable docker space — the "what needs attention on the system
+    layer" view the Home tiles only summarize."""
+
+    def compose(self) -> ComposeResult:
+        yield Static("", id="updates-summary")
+        yield DataTable(id="updates-table", zebra_stripes=True)
+
+    def on_mount(self) -> None:
+        table = self.query_one(DataTable)
+        table.add_columns("source", "package", "current", "latest")
+        self.refresh_data()
+
+    def refresh_data(self) -> None:
+        self.query_one("#updates-summary", Static).update("[dim]loading…[/dim]")
+        self.run_worker(self._load, thread=True, exclusive=True)
+
+    def _load(self) -> None:
+        d = {
+            "apt": _apt_upgradable(),
+            "npm": _npm_outdated(),
+            "pip": _pip_outdated(),
+            "images": _docker_image_updates(),
+            "reclaim": _docker_reclaimable(),
+            "cleanup_last": _run(
+                ["systemctl", "show", "disk-cleanup.timer", "--property=LastTriggerUSec"], timeout=5
+            ).strip().split("=", 1)[-1],
+        }
+        self.app.call_from_thread(self._set, d)
+
+    def _set(self, d: dict) -> None:
+        table = self.query_one(DataTable)
+        table.clear()
+        for name in d["apt"]:
+            table.add_row("apt", name, "-", "-")
+        for row in d["npm"]:
+            table.add_row("npm", row["name"], row["current"], row["latest"])
+        for row in d["pip"]:
+            table.add_row("pip", row["name"], row["current"], row["latest"])
+        for line in d["images"]:
+            table.add_row("docker", line[:80], "-", "-")
+
+        reclaim_bits = [
+            f"{k} {v}" for k, v in d["reclaim"].items()
+            if v and not v.endswith("(0%)") and v != "0B"
+        ]
+        total = len(d["apt"]) + len(d["npm"]) + len(d["pip"]) + len(d["images"])
+        summary = f"[bold]{total} updates pending[/bold]  ·  apt {len(d['apt'])}  npm {len(d['npm'])}  pip {len(d['pip'])}  docker images {len(d['images'])}\n"
+        summary += f"disk-cleanup.timer last ran: {d['cleanup_last'] or 'unknown'}\n"
+        summary += ("[bold #d1a94a]docker reclaimable: " + ", ".join(reclaim_bits) + "[/bold #d1a94a]"
+                    if reclaim_bits else "[dim]nothing reclaimable in docker[/dim]")
+        self.query_one("#updates-summary", Static).update(summary)
+
+
 class AskPane(Vertical):
     def compose(self) -> ComposeResult:
         yield Input(placeholder="Ask about your setup — grounded in live data…", id="ask-input")
@@ -713,8 +872,8 @@ class JarvisApp(App):
 
     #home-loading { height: 3; }
     #dashboard-grid {
-        layout: grid; grid-size: 4 4; grid-gutter: 1 1;
-        grid-rows: 7 7 1fr 1fr; padding: 0 1;
+        layout: grid; grid-size: 4 5; grid-gutter: 1 1;
+        grid-rows: 7 7 7 1fr 1fr; padding: 0 1;
     }
     .stat-tile {
         background: $surface; border: solid $panel; padding: 0 1;
@@ -743,6 +902,7 @@ class JarvisApp(App):
     #feeds-right { width: 1fr; padding: 0 2; }
     #feeds-list { height: 1fr; }
     #containers-hint, #access-hint, #agents-hint { color: $text-muted; padding: 0 1; }
+    #updates-summary { height: auto; padding: 1; background: $surface; border: solid $panel; margin-bottom: 1; }
     #access-url { padding: 1; color: $primary; }
     """
 
@@ -759,8 +919,9 @@ class JarvisApp(App):
         Binding("4", "goto('agents')", "", show=False),
         Binding("5", "goto('feeds')", "", show=False),
         Binding("6", "goto('crons')", "", show=False),
-        Binding("7", "goto('ask')", "", show=False),
-        Binding("8", "goto('ops')", "", show=False),
+        Binding("7", "goto('updates')", "", show=False),
+        Binding("8", "goto('ask')", "", show=False),
+        Binding("9", "goto('ops')", "", show=False),
         Binding("l", "toggle_live", "toggle live"),
     ]
     TITLE = "Jarvis"
@@ -786,6 +947,7 @@ class JarvisApp(App):
                     yield AgentsPane(id="agents")
                     yield FeedsPane(id="feeds")
                     yield CronsPane(id="crons")
+                    yield UpdatesPane(id="updates")
                     yield AskPane(id="ask")
                     yield OpsPane(id="ops")
                 yield Activity(f"live — auto-refresh every {self.AUTO_REFRESH_SECS}s", id="activity-bar")
