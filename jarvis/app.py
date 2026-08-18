@@ -71,6 +71,7 @@ def _hex_lerp(c1: str, c2: str, t: float) -> str:
 
 STATUS_SCRIPT = "/opt/cryptex/scripts/cryptex-status.sh"
 HEALTH_SCRIPT = "/opt/cryptex/scripts/health-check.sh"
+UPDATE_SCRIPT = "/opt/cryptex/jarvis/scripts/update-system.sh"
 SELF_AUDIT_SCRIPT = os.path.expanduser("~/.claude/scripts/self-audit.sh")
 BACKUP_VERIFY_SCRIPT = "/opt/cryptex/scripts/backup-verify.sh"
 DAILY_REPORT = "/var/log/cryptex-daily-report.json"
@@ -406,8 +407,8 @@ class HomePane(Vertical):
             procs = DataTable(id="home-procs", classes="panel", zebra_stripes=True)
             procs.border_title = "TOP PROCESSES"
             yield procs
-            issues = Static("", id="home-issues", classes="panel")
-            issues.border_title = "ISSUES"
+            issues = DataTable(id="home-issues", classes="panel", zebra_stripes=True, cursor_type="row")
+            issues.border_title = "ISSUES — enter to jump to pane"
             yield issues
             feed = Static("", id="home-feed", classes="panel wide")
             feed.border_title = "LATEST FEED"
@@ -417,8 +418,18 @@ class HomePane(Vertical):
         self.query_one("#dashboard-grid").display = False
         table = self.query_one("#home-procs", DataTable)
         table.add_columns("PID", "NAME", "CPU%", "MEM%")
+        issues_table = self.query_one("#home-issues", DataTable)
+        issues_table.add_columns("area", "issue")
+        self._issue_rows: list[str] = []
         self._prev_net = None
         self.refresh_data()
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        if event.data_table.id != "home-issues":
+            return
+        if event.cursor_row >= len(self._issue_rows):
+            return
+        self.app.action_goto(self._issue_rows[event.cursor_row])
 
     def refresh_data(self) -> None:
         self.run_worker(self._load, thread=True, exclusive=True)
@@ -458,12 +469,19 @@ class HomePane(Vertical):
         d["mem_pct"] = 100 - int(mem_free / mem_total * 100)
         d["mem_free"], d["mem_total"] = mem_free, mem_total
 
-        job_statuses = [gs._job_status(job) for job in gs.CLAUDE_AGENT_JOBS]
-        d["active_jobs"] = sum(1 for st in job_statuses if st.get("active_state") == "active")
-        d["failed_jobs"] = sum(
-            1 for st in job_statuses
+        job_statuses = dict(zip(gs.CLAUDE_AGENT_JOBS, [gs._job_status(job) for job in gs.CLAUDE_AGENT_JOBS]))
+        d["active_jobs"] = sum(1 for st in job_statuses.values() if st.get("active_state") == "active")
+        d["failed_job_names"] = [
+            job for job, st in job_statuses.items()
             if st.get("last_start") and st.get("result") not in (None, "success")
-        )
+        ]
+        d["failed_jobs"] = len(d["failed_job_names"])
+
+        try:
+            cron_nodes = gs.cluster_crons()["nodes"]
+            d["failed_crons"] = [n["label"] for n in cron_nodes if n["meta"].get("failed")]
+        except Exception:  # noqa: BLE001
+            d["failed_crons"] = []
 
         try:
             with open("/var/log/cryptex-restore-check.log") as fh:
@@ -635,21 +653,29 @@ class HomePane(Vertical):
             "warn" if reclaim_bits else "ok",
         )
 
-        verdict_color = "#3ad6d6" if d["verdict"] == "HEALTHY" else "#e8b64c"
-        issues = f"[bold {verdict_color}]{d['verdict']}[/bold {verdict_color}]"
-        if d["issue_list"]:
-            issues += f"  —  {d['issue_list']}"
-        if d["fails"]:
-            issues += "\n[bold #e2534f]services down:[/bold #e2534f] " + ", ".join(n["label"] for n in d["fails"])
-        if d["unhealthy"]:
-            issues += "\n[bold #e2534f]unhealthy containers:[/bold #e2534f] " + ", ".join(d["unhealthy"])
+        issues_table = self.query_one("#home-issues", DataTable)
+        issues_table.clear()
+        self._issue_rows = []
+        rows = []  # (area label, issue text, nav key)
+        for n in d["fails"]:
+            rows.append(("service", f"[#e2534f]{n['label']} down[/#e2534f]", "access"))
+        for name in d["unhealthy"]:
+            rows.append(("container", f"[#e2534f]{name} unhealthy[/#e2534f]", "containers"))
+        for job in d["failed_job_names"]:
+            rows.append(("agent", f"[#e2534f]{job} last run FAILED[/#e2534f]", "agents"))
+        for label in d["failed_crons"]:
+            rows.append(("cron", f"[#e2534f]{label} FAILED[/#e2534f]", "crons"))
         if total_updates:
-            issues += f"\n[bold #e8b64c]{total_updates} package/image updates pending[/bold #e8b64c] — see Updates (7)"
+            rows.append(("updates", f"[#e8b64c]{total_updates} package/image updates pending[/#e8b64c]", "updates"))
         if reclaim_bits:
-            issues += "\n[dim]docker reclaimable: " + ", ".join(reclaim_bits) + " — r on Containers won't clear this, run docker system prune[/dim]"
-        if not d["fails"] and not d["unhealthy"] and not d["issue_list"] and not total_updates:
-            issues += "\n[dim]nothing needs attention[/dim]"
-        self.query_one("#home-issues", Static).update(issues)
+            rows.append(("disk", f"[dim]reclaimable: {', '.join(reclaim_bits)}[/dim]", "containers"))
+        if d["issue_list"]:
+            rows.append(("self-audit", d["issue_list"], "ops"))
+        if not rows:
+            rows.append(("-", "[dim]nothing needs attention[/dim]", "home"))
+        for area, text, nav_key in rows:
+            issues_table.add_row(area, text)
+            self._issue_rows.append(nav_key)
 
         if d["newest_feed"]:
             age_min = int((datetime.now().timestamp() - d["newest_mtime"]) / 60)
@@ -894,11 +920,15 @@ class FeedsPane(Horizontal):
 
 class CronsPane(Vertical):
     def compose(self) -> ComposeResult:
-        yield DataTable(id="crons-table", zebra_stripes=True)
+        yield DataTable(id="crons-table", zebra_stripes=True, cursor_type="row")
+        yield Static("[dim]z=restart failed unit  r=refresh[/dim]", id="crons-hint")
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
-        table.add_columns("status", "timer/entry", "kind", "detail")
+        table.add_column("status", width=6)
+        table.add_column("timer/entry", width=60)
+        table.add_column("kind", width=15)
+        table.add_column("detail", width=35)
         self.refresh_data()
 
     def refresh_data(self) -> None:
@@ -911,6 +941,7 @@ class CronsPane(Vertical):
     def _set(self, nodes: list) -> None:
         table = self.query_one(DataTable)
         table.clear()
+        self._rows = nodes
         for n in nodes:
             meta = n["meta"]
             detail = meta.get("next_run") or meta.get("schedule") or ""
@@ -918,7 +949,16 @@ class CronsPane(Vertical):
                 status = "[#f06868]FAIL[/#f06868]"
             else:
                 status = "[dim]ok[/dim]"
-            table.add_row(status, n["label"], n["kind"], detail)
+            label = n["label"]
+            if len(label) > 58:
+                label = label[:55] + "…"
+            table.add_row(status, label, n["kind"], detail)
+
+    def selected(self):
+        table = self.query_one(DataTable)
+        if table.cursor_row is None or table.cursor_row >= len(getattr(self, "_rows", [])):
+            return None
+        return self._rows[table.cursor_row]
 
 
 class UpdatesPane(Vertical):
@@ -928,12 +968,49 @@ class UpdatesPane(Vertical):
 
     def compose(self) -> ComposeResult:
         yield Static("", id="updates-summary")
+        with Horizontal(id="updates-buttons"):
+            yield Button("dry-run", id="btn-updates-dryrun")
+            yield Button("apply updates", id="btn-updates-apply", variant="warning")
         yield DataTable(id="updates-table", zebra_stripes=True)
+        yield Log(id="updates-log", highlight=True)
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
         table.add_columns("source", "package", "current", "latest")
+        self.query_one("#updates-log", Log).display = False
         self.refresh_data()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-updates-dryrun":
+            self._run_update_script(dry_run=True)
+        elif event.button.id == "btn-updates-apply":
+            def after(confirmed: bool | None) -> None:
+                if confirmed:
+                    self._run_update_script(dry_run=False)
+            self.app.push_screen(
+                ConfirmModal("Apply all pending apt/npm/pip updates now?"), after,
+            )
+
+    def _run_update_script(self, dry_run: bool) -> None:
+        log = self.query_one("#updates-log", Log)
+        log.display = True
+        log.clear()
+        cmd = ["bash", UPDATE_SCRIPT] + (["--dry-run"] if dry_run else [])
+        log.write_line(f"$ {' '.join(cmd)}\n")
+        self.app.query_one(Activity).log_event(
+            "running update-system.sh --dry-run" if dry_run else "APPLYING system updates…"
+        )
+        self.run_worker(lambda: self._exec_update_script(cmd, dry_run), thread=True)
+
+    def _exec_update_script(self, cmd: list, dry_run: bool) -> None:
+        out = _run(cmd, timeout=300)
+        self.app.call_from_thread(self.query_one("#updates-log", Log).write, out)
+        self.app.call_from_thread(
+            self.app.query_one(Activity).log_event,
+            "dry-run complete" if dry_run else "updates applied",
+        )
+        if not dry_run:
+            self.app.call_from_thread(self.refresh_data)
 
     def refresh_data(self) -> None:
         self.query_one("#updates-summary", Static).update("[dim]loading…[/dim]")
@@ -1106,7 +1183,8 @@ class JarvisApp(App):
     }
     DataTable { height: 1fr; }
     DataTable > .datatable--cursor { background: $boost; }
-    #ops-buttons { height: 3; }
+    #ops-buttons, #updates-buttons { height: 3; }
+    #updates-log { height: 1fr; border: round $panel; margin-top: 1; }
     #ops-log { height: 1fr; border: round $panel; }
     #ask-scroll { height: 1fr; border: round $panel; }
     #ask-log { width: 1fr; padding: 0 1; }
@@ -1228,7 +1306,10 @@ class JarvisApp(App):
         self._container_action("stop", "Stop")
 
     def action_container_restart(self) -> None:
-        self._container_action("restart", "Restart")
+        if self._current_containers_pane() is not None:
+            self._container_action("restart", "Restart")
+        elif self._current_crons_pane() is not None:
+            self._restart_cron_unit()
 
     def _container_action(self, verb: str, label: str) -> None:
         pane = self._current_containers_pane()
@@ -1250,6 +1331,37 @@ class JarvisApp(App):
     def _run_container_action(self, verb: str, name: str, pane) -> None:
         out = _run(["docker", verb, name], timeout=30)
         self.call_from_thread(self.query_one(Activity).log_event, f"{verb} {name}: {out.strip() or 'done'}")
+        self.call_from_thread(pane.refresh_data)
+
+    def _current_crons_pane(self):
+        switcher = self.query_one(ContentSwitcher)
+        if switcher.current != "crons":
+            return None
+        return switcher.get_child_by_id("crons")
+
+    def _restart_cron_unit(self) -> None:
+        pane = self._current_crons_pane()
+        if pane is None:
+            return
+        node = pane.selected()
+        if not node or node["kind"] != "systemd_timer":
+            return
+        meta = node["meta"]
+        if not meta.get("failed"):
+            return
+        unit = node["label"]
+
+        def after(confirmed: bool | None) -> None:
+            if not confirmed:
+                return
+            self.query_one(Activity).log_event(f"restarting {unit}…")
+            self.run_worker(lambda: self._run_restart_unit(unit, pane), thread=True)
+
+        self.push_screen(ConfirmModal(f"Restart failed unit [bold]{unit}[/bold]?"), after)
+
+    def _run_restart_unit(self, unit: str, pane) -> None:
+        out = _run(["sudo", "-n", "systemctl", "restart", unit], timeout=30)
+        self.call_from_thread(self.query_one(Activity).log_event, out.strip() or f"{unit} restarted")
         self.call_from_thread(pane.refresh_data)
 
     def _current_agents_pane(self):
