@@ -51,15 +51,22 @@ def _run(cmd: list, timeout: int = 8) -> str:
 
 def _job_status(job: str) -> dict:
     unit = f"claude-agent@{job}.service"
-    out = _run(["systemctl", "show", unit, "-p", "ActiveState,ExecMainStartTimestamp"])
+    out = _run(["systemctl", "show", unit,
+                "-p", "ActiveState,ExecMainStartTimestamp,Result,ExecMainStatus"])
     props = {}
     for line in out.splitlines():
         if "=" in line:
             k, _, v = line.partition("=")
             props[k] = v
+    # Result is "success" only after a completed run; a still-running/never-run
+    # unit reports Result=success too (systemd's pre-run default), so pair it
+    # with ExecMainStatus (last exit code) to actually distinguish "ran fine"
+    # from "never ran" from "failed" for the Agents pane's success/failure column.
     return {
         "active_state": props.get("ActiveState") or None,
         "last_start": props.get("ExecMainStartTimestamp") or None,
+        "result": props.get("Result") or None,
+        "exit_status": props.get("ExecMainStatus") or None,
     }
 
 
@@ -280,6 +287,12 @@ def cluster_agents() -> dict:
 
 def cluster_crons() -> dict:
     nodes = []
+    # systemctl --failed lists units whose last run ended badly (crash, non-zero
+    # exit, timeout) — cross-referenced below so a broken timer doesn't look
+    # identical to a healthy one in the crons table.
+    failed_out = _run(["systemctl", "--failed", "--no-legend", "--plain"])
+    failed_units = {line.split()[0] for line in failed_out.splitlines() if line.strip()}
+
     out = _run(["systemctl", "list-timers", "--no-pager", "--all"])
     lines = [l for l in out.splitlines() if l.strip()]
     for line in lines:
@@ -294,7 +307,10 @@ def cluster_crons() -> dict:
             nodes.append({
                 "id": f"cron-{svc}", "label": svc, "cluster": "crons",
                 "kind": "systemd_timer",
-                "meta": {"timer": unit, "next_run": next_run, "raw": line.strip()},
+                "meta": {
+                    "timer": unit, "next_run": next_run, "raw": line.strip(),
+                    "failed": svc in failed_units or (unit in failed_units if unit else False),
+                },
             })
     for user in ("root", "ubuntu"):
         out = _run(["sudo", "-n", "crontab", "-l", "-u", user])

@@ -119,6 +119,16 @@ def _run(cmd, timeout=30, env=None):
         return f"(failed to run: {e})"
 
 
+def _humanize_age(mtime: float) -> str:
+    age_min = int((datetime.now().timestamp() - mtime) / 60)
+    if age_min < 60:
+        return f"{age_min}m ago"
+    age_hr = age_min // 60
+    if age_hr < 48:
+        return f"{age_hr}h ago"
+    return f"{age_hr // 24}d ago"
+
+
 def _latest_section(text: str) -> str:
     parts = text.split("\n## ")
     if len(parts) <= 1:
@@ -448,9 +458,11 @@ class HomePane(Vertical):
         d["mem_pct"] = 100 - int(mem_free / mem_total * 100)
         d["mem_free"], d["mem_total"] = mem_free, mem_total
 
-        d["active_jobs"] = sum(
-            1 for job in gs.CLAUDE_AGENT_JOBS
-            if gs._job_status(job).get("active_state") == "active"
+        job_statuses = [gs._job_status(job) for job in gs.CLAUDE_AGENT_JOBS]
+        d["active_jobs"] = sum(1 for st in job_statuses if st.get("active_state") == "active")
+        d["failed_jobs"] = sum(
+            1 for st in job_statuses
+            if st.get("last_start") and st.get("result") not in (None, "success")
         )
 
         try:
@@ -542,10 +554,17 @@ class HomePane(Vertical):
             f"{d['mem_pct']}%", f"{d['mem_free']}MB free / {d['mem_total']}MB", mem_status,
         )
 
+        if d["failed_jobs"]:
+            agents_sub = f"{d['failed_jobs']} failed"
+            agents_status = "fail"
+        elif d["active_jobs"]:
+            agents_sub = f"{d['active_jobs']} running now"
+            agents_status = "warn"
+        else:
+            agents_sub = "idle"
+            agents_status = "neutral"
         self.query_one("#tile-agents", StatTile).set_value(
-            str(len(gs.CLAUDE_AGENT_JOBS)),
-            f"{d['active_jobs']} running now" if d["active_jobs"] else "idle",
-            "warn" if d["active_jobs"] else "neutral",
+            str(len(gs.CLAUDE_AGENT_JOBS)), agents_sub, agents_status,
         )
 
         backup_status, backup_value, backup_sub = "neutral", "?", "no drill log"
@@ -553,9 +572,10 @@ class HomePane(Vertical):
             date_str = d["backup_line"].split(" DRILL ", 1)[0]
             try:
                 age_days = (datetime.now() - datetime.strptime(date_str, "%Y-%m-%d")).days
-                backup_status = "ok" if age_days < 2 else ("warn" if age_days < 7 else "fail")
+                # restore-drill.timer runs monthly (OnCalendar=*-*-06) — thresholds track that cadence, not a daily one
+                backup_status = "ok" if age_days < 35 else ("warn" if age_days < 40 else "fail")
                 backup_value = f"{age_days}d ago"
-                backup_sub = "drill passed" if backup_status == "ok" else "drill stale — check"
+                backup_sub = "drill passed" if backup_status == "ok" else "drill overdue — check"
             except ValueError:
                 backup_value = "?"
         self.query_one("#tile-backup", StatTile).set_value(backup_value, backup_sub, backup_status)
@@ -766,7 +786,7 @@ class AgentsPane(Horizontal):
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
         table.cursor_type = "row"
-        table.add_columns("job", "state", "last start")
+        table.add_columns("job", "state", "last run", "last start")
         self.refresh_data()
 
     def refresh_data(self) -> None:
@@ -776,16 +796,23 @@ class AgentsPane(Horizontal):
         rows = []
         for job in gs.CLAUDE_AGENT_JOBS:
             st = gs._job_status(job)
-            rows.append((job, st.get("active_state") or "?", st.get("last_start") or "?"))
+            rows.append((job, st.get("active_state") or "?", st.get("last_start") or "?",
+                         st.get("result"), st.get("exit_status")))
         self.app.call_from_thread(self._set, rows)
 
     def _set(self, rows: list) -> None:
         table = self.query_one(DataTable)
         table.clear()
         self._rows = rows
-        for job, state, last in rows:
+        for job, state, last, result, exit_status in rows:
             style = "#3ad6d6" if state == "active" else ("dim" if state in ("inactive", "dead") else "#3ad6d6")
-            table.add_row(job, f"[{style}]{state}[/{style}]", last)
+            if last == "?" or not result:
+                last_run = "[dim]never run[/dim]"
+            elif result == "success" and (exit_status in (None, "", "0")):
+                last_run = "[#3ad6d6]ok[/#3ad6d6]"
+            else:
+                last_run = f"[#e2534f]FAIL ({result})[/#e2534f]"
+            table.add_row(job, f"[{style}]{state}[/{style}]", last_run, last)
 
     def selected_job(self):
         table = self.query_one(DataTable)
@@ -827,6 +854,24 @@ class FeedsPane(Horizontal):
         with VerticalScroll(id="feeds-right"):
             yield Markdown("select a feed on the left", id="feeds-content")
 
+    def on_mount(self) -> None:
+        self.run_worker(self._load_staleness, thread=True, exclusive=True)
+
+    def _load_staleness(self) -> None:
+        ages = {}
+        for name, fname in FEEDS.items():
+            path = os.path.join(FEEDS_DIR, fname)
+            try:
+                ages[name] = _humanize_age(os.path.getmtime(path))
+            except OSError:
+                ages[name] = "missing"
+        self.app.call_from_thread(self._set_staleness, ages)
+
+    def _set_staleness(self, ages: dict) -> None:
+        for name, age in ages.items():
+            item = self.query_one(f"#feed-{name}", ListItem)
+            item.query_one(Label).update(f"{name}  [dim]{age}[/dim]")
+
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         name = event.item.id.removeprefix("feed-")
         self.run_worker(lambda: self._load(name), thread=True, exclusive=True)
@@ -853,7 +898,7 @@ class CronsPane(Vertical):
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
-        table.add_columns("timer/entry", "kind", "detail")
+        table.add_columns("status", "timer/entry", "kind", "detail")
         self.refresh_data()
 
     def refresh_data(self) -> None:
@@ -869,7 +914,11 @@ class CronsPane(Vertical):
         for n in nodes:
             meta = n["meta"]
             detail = meta.get("next_run") or meta.get("schedule") or ""
-            table.add_row(n["label"], n["kind"], detail)
+            if meta.get("failed"):
+                status = "[#f06868]FAIL[/#f06868]"
+            else:
+                status = "[dim]ok[/dim]"
+            table.add_row(status, n["label"], n["kind"], detail)
 
 
 class UpdatesPane(Vertical):
@@ -928,17 +977,21 @@ class UpdatesPane(Vertical):
 
 
 class AskPane(Vertical):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._history = ""
+
     def compose(self) -> ComposeResult:
         yield Input(placeholder="Ask about your setup — grounded in live data…", id="ask-input")
-        yield Log(id="ask-log", highlight=True)
+        with VerticalScroll(id="ask-scroll"):
+            yield Markdown("*ask a question to get started*", id="ask-log")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         question = event.value.strip()
         if not question:
             return
-        log = self.query_one("#ask-log", Log)
-        log.write_line(f"\n> {question}")
-        log.write_line("(thinking…)")
+        self._history += f"\n\n---\n\n**> {question}**\n\n*(thinking…)*"
+        self.query_one("#ask-log", Markdown).update(self._history)
         self.query_one(Input).value = ""
         self.run_worker(lambda: self._ask(question), thread=True, exclusive=True)
 
@@ -951,8 +1004,9 @@ class AskPane(Vertical):
         self.app.call_from_thread(self._append, answer)
 
     def _append(self, answer: str) -> None:
-        log = self.query_one("#ask-log", Log)
-        log.write_line(answer)
+        self._history = self._history.rsplit("*(thinking…)*", 1)[0] + answer
+        self.query_one("#ask-log", Markdown).update(self._history)
+        self.query_one("#ask-scroll", VerticalScroll).scroll_end(animate=False)
 
 
 class OpsPane(Vertical):
@@ -1053,7 +1107,9 @@ class JarvisApp(App):
     DataTable { height: 1fr; }
     DataTable > .datatable--cursor { background: $boost; }
     #ops-buttons { height: 3; }
-    #ask-log, #ops-log { height: 1fr; border: round $panel; }
+    #ops-log { height: 1fr; border: round $panel; }
+    #ask-scroll { height: 1fr; border: round $panel; }
+    #ask-log { width: 1fr; padding: 0 1; }
     #agents-left { width: 45%; }
     #agents-log { width: 55%; border: round $panel; }
     #feeds-left { width: 28; }
